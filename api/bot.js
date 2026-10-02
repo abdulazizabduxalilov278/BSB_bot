@@ -15,31 +15,32 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// /start komandasi bosilganda asosiy menyuni chiqarish
+// /start komandasi bosilganda xabar tagida tugmalarni chiqarish
 bot.start((ctx) => {
   ctx.reply(
     'Assalomu alaykum! Kerakli bo\'limni tanlang:',
-    Markup.keyboard([
-      ['👨‍💻 Dasturchi bilan bog\'lanish'],
-      ['❓ Savol berish']
-    ]).resize()
+    Markup.inlineKeyboard([
+      [Markup.button.callback('👨‍💻 Dasturchi bilan bog\'lanish', 'contact_dev')],
+      [Markup.button.callback('❓ Savol berish', 'ask_question')]
+    ])
   );
 });
 
 // Dasturchi bilan bog'lanish tugmasi bosilganda
-bot.hears('👨‍💻 Dasturchi bilan bog\'lanish', (ctx) => {
-  ctx.reply('Dasturchi bilan bog\'lanish uchun: @Abdumalik_Abduxalilov ga yozishingiz mumkin.');
+bot.action('contact_dev', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply('Dasturchi bilan bog\'lanish uchun: @Abdumalik_Abduxalilov ga yozishingiz mumkin.');
 });
 
 // Savol berish tugmasi bosilganda
-bot.hears('❓ Savol berish', (ctx) => {
-  ctx.reply('Marhamat, o\'zingizni qiziqtirgan savolni yozib yuboring yoki masalaning rasmini tashlang. Men uni qadam-baqadam va oddiy tilda tushuntirib beraman!');
+bot.action('ask_question', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply('Marhamat, o\'zingizni qiziqtirgan savolni yozib yuboring yoki masalaning rasmini tashlang. Men uni qadam-baqadam va oddiy tilda tushuntirib beraman!');
 });
 
-// Matnli xabarlar uchun (masala va savollar)
+// Matnli xabarlar uchun (savollar va masalalar)
 bot.on('text', async (ctx) => {
   const text = ctx.message.text;
-  if (text === '👨‍💻 Dasturchi bilan bog\'lanish' || text === '❓ Savol berish') return;
 
   try {
     await ctx.sendChatAction('typing');
