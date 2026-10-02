@@ -1,19 +1,11 @@
 {
-  "name": "bsb_bot",
+  "name": "bsb-bot",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "description": "Telegram AI Bot",
+  "main": "api/bot.js",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "axios": "^1.20.0",
-    "dotenv": "^18.0.4",
+    "@google/generative-ai": "^0.21.0",
+    "axios": "^1.7.9",
     "telegraf": "^4.16.3"
   }
 }

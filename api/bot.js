@@ -16,7 +16,7 @@ async function urlToGenerativePart(url, mimeType) {
 }
 
 bot.start((ctx) => {
-  ctx.reply('Salom! Menga istalgan fandan savol yozishingiz yoki masalaning rasmini yuborishingiz mumkin. Men uni qadam-baqadam, tushunarli qilib yechib beraman!');
+  ctx.reply('Salom! Menga istalgan fandan savol yozishingiz yoki masalaning rasmini yuborishingiz mumkin. Men uni qadam-baqadam va tushunarli qilib yechib beraman!');
 });
 
 // Matnli xabarlar uchun
@@ -25,14 +25,14 @@ bot.on('text', async (ctx) => {
     await ctx.sendChatAction('typing');
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
-    const prompt = `Sen har qanday fan bo'yicha (matematika, fizika, kimyo, ona tili, tarix va hokazo) tajribali va mehribon o'qituvchisan. Foydalanuvchi yuborgan quyidagi savol yoki masalaga o'zbek tilida oddiy, tushunarli va ketma-ketlikda (qadam-baqadam) to'liq javob ber:\n\n${ctx.message.text}`;
+    const prompt = `Sen har qanday fan bo'yicha (matematika, fizika, kimyo, ona tili, tarix va hokazo) tajribali o'qituvchisan. Foydalanuvchi yuborgan quyidagi savol yoki masalaga o'zbek tilida oddiy, tushunarli va ketma-ketlikda (qadam-baqadam) to'liq javob ber:\n\n${ctx.message.text}`;
     
     const result = await model.generateContent(prompt);
     const response = await result.response;
     await ctx.reply(response.text());
   } catch (error) {
     console.error(error);
-    ctx.reply('Kechirasiz, savolingizga javob topishda kichik xatolik yuz berdi. Iltimos, qaytadan yozib yuboring.');
+    ctx.reply('Kechirasiz, savolingizga javob olishda xatolik yuz berdi. Iltimos, qaytadan yozib yuboring.');
   }
 });
 
@@ -54,7 +54,7 @@ bot.on('photo', async (ctx) => {
     await ctx.reply(response.text());
   } catch (error) {
     console.error(error);
-    ctx.reply('Kechirasiz, rasmni o\'qishda xatolik yuz berdi. Iltimos, boshqa aniqroq rasm tashlang yoki matn ko\'rinishida yozib yuboring.');
+    ctx.reply('Kechirasiz, rasmni o\'qishda xatolik yuz berdi. Iltimos, boshqa aniqroq rasm tashlang yoki matn ko\'rinishida yuboring.');
   }
 });
 
