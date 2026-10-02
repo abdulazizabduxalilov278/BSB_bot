@@ -1,112 +1,77 @@
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 
-const bot = new Telegraf("8847999795:AAFbQR81Q1_GpKPe9eRHG1wThJvkV3r5Vnc");
-const genAI = new GoogleGenerativeAI("AIzaSyAb8RN6JQksnA82sMy4-ZRzCHkdf2urD4dNCPUc4Adz87vVkd8g");
+const bot = new Telegraf(process.env.BOT_TOKEN);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Rasmni yuklab olib Gemini uchun tayyorlash yordamchisi
+async function urlToGenerativePart(url, mimeType) {
+  const response = await axios.get(url, { responseType: 'arraybuffer' });
+  return {
+    inlineData: {
+      data: Buffer.from(response.data).toString('base64'),
+      mimeType
+    },
+  };
+}
 
 bot.start((ctx) => {
-    const welcomeText = 
-        `👋 **Assalomu alaykum, hurmatli o'quvchi!**\n\n` +
-        `🤖 Men sizning shaxsiy sun'iy intellekt yordamchi ustozingizman.\n` +
-        `📚 Menga 7, 8 yoki boshqa sinf **BSB / CHSB** vazifalari tushirilgan rasmni yuboring, va men uni qadam-ba-qadam tushuntirib yechib beraman!\n\n` +
-        `👇 Kerakli bo'limni tanlang:`;
-
-    ctx.reply(welcomeText, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-            [Markup.button.callback('📌 Qanday foydalanish kerak?', 'help')],
-            [Markup.button.callback('💎 VIP Obuna sotib olish', 'vip_info')],
-            [Markup.button.url('👨‍💻 Dasturchi bilan bog\'lanish', 'https://t.me/XAVIK_ORG')]
-        ])
-    });
+  ctx.reply('Salom! Menga istalgan fandan savol yozishingiz yoki masalaning rasmini tashlashingiz mumkin. Barchasiga to\'liq va tushunarli qilib yechim beraman!');
 });
 
-bot.action('help', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-        `📖 **Botdan foydalanish yo'riqnomasi:**\n\n` +
-        `1️⃣ Test yoki masala tushirilgan qog'ozni yaxshi yoritilgan holda rasmga oling.\n` +
-        `2️⃣ Rasmni to'g'ridan-to'g'ri ushbu botga yuboring.\n` +
-        `3️⃣ 10-15 soniya kuting va sun'iy intellekt bergan batafsil yechimni o'qing!`,
-        {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 Orqaga', 'back_home')]])
-        }
-    );
+// Matnli xabarlar uchun (istalgan fan)
+bot.on('text', async (ctx) => {
+  try {
+    await ctx.sendChatAction('typing');
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const prompt = `Sen har qanday fan bo'yicha (matematika, fizika, kimyo, biologiya, ona tili, tarix va hokazo) tajribali o'qituvchi va mutaxassissan. Foydalanuvchi yuborgan quyidagi savol yoki masalaga o'zbek tilida aniq, tushunarli va qadam-baqadam to'liq javob ber:\n\n${ctx.message.text}`;
+    
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    await ctx.reply(response.text());
+  } catch (error) {
+    console.error(error);
+    ctx.reply('Kechirasiz, xatolik yuz berdi. Iltimos, qaytadan urinib ko\'ring.');
+  }
 });
 
-bot.action('vip_info', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.editMessageText(
-        `💎 **VIP Obuna Imkoniyatlari:**\n\n` +
-        `✨ **Cheklovsiz yechimlar:** Kunlik so'rovlar soniga cheklov yo'q.\n` +
-        `⚡ **Ustuvor navbat:** Masalalar birinchilar qatorida juda tez tahlil qilinadi.\n` +
-        `🎯 **Yuqori aniqlik:** Murakkab va qo'lyozma rasmlarni mukammal o'qish.\n\n` +
-        `💰 **Narxi:** 15,000 so'm / oy\n\n` +
-        `👇 VIP statusini olish uchun adminga yozing:`,
-        {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-                [Markup.button.url('💳 Obuna sotib olish (Admin)', 'https://t.me/XAVIK_ORG')],
-                [Markup.button.callback('🔙 Orqaga', 'back_home')]
-            ])
-        }
-    );
-});
-
-bot.action('back_home', async (ctx) => {
-    await ctx.answerCbQuery();
-    const welcomeText = `👋 **Asosiy menyu:**\n\n📚 BSB va CHSB vazifalarini yechish uchun rasm yuboring:`;
-    await ctx.editMessageText(welcomeText, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-            [Markup.button.callback('📌 Qanday foydalanish kerak?', 'help')],
-            [Markup.button.callback('💎 VIP Obuna sotib olish', 'vip_info')],
-            [Markup.button.url('👨‍💻 Dasturchi bilan bog\'lanish', 'https://t.me/XAVIK_ORG')]
-        ])
-    });
-});
-
+// Rasmli xabarlar uchun (rasmdagi masalalar)
 bot.on('photo', async (ctx) => {
-    let waitMessage;
-    try {
-        waitMessage = await ctx.reply("📸 Rasm qabul qilindi.\n⏳ *AI yechim tayyorlamoqda...*", { parse_mode: 'Markdown' });
-        
-        const photo = ctx.message.photo.pop();
-        const fileLink = await bot.telegram.getFileLink(photo.file_id);
-        
-        const response = await axios.get(fileLink.href, { responseType: 'arraybuffer', timeout: 30000 });
-        const imageBuffer = Buffer.from(response.data, 'binary');
+  try {
+    await ctx.sendChatAction('typing');
+    
+    // Rasmning eng sifatli nusxasini olish
+    const photo = ctx.message.photo[ctx.message.photo.length - 1];
+    const fileLink = await ctx.telegram.getFileLink(photo.file_id);
+    
+    // Rasmni yuklab olish
+    const imagePart = await urlToGenerativePart(fileLink.href, 'image/jpeg');
+    
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const userCaption = ctx.message.caption || 'Bu rasmdagi masalani yoki savolni qaysi fandan bo\'lishidan qat\'iy nazar tushuntirib, to\'liq yechib ber.';
+    const prompt = `Sen har qanday fan bo'yicha mutaxassis o'qituvchisan. Ushbu rasmdagi vazifani, masalani yoki savolni diqqat bilan o'qib chiq va to'liq, tushunarli qilib o'zbek tilida yechimini yozib ber.\nFoydalanuvchi izohi: ${userCaption}`;
 
-        const imagePart = {
-            inlineData: { data: imageBuffer.toString("base64"), mimeType: "image/jpeg" },
-        };
-
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash"});
-        const prompt = "Sen maktab o'quvchilari uchun BSB va CHSB vazifalarini yechuvchi tajribali ustozsan. Rasmda berilgan savollarni aniq, qadam-ba-qadam yechib ber.";
-
-        const result = await model.generateContent([prompt, imagePart]);
-        const aiResponse = await result.response.text();
-
-        if (waitMessage) try { await ctx.telegram.deleteMessage(ctx.chat.id, waitMessage.message_id); } catch (e) {}
-        await ctx.reply(`✅ **Topshiriq yechimi:**\n\n${aiResponse}`, { parse_mode: 'Markdown' });
-
-    } catch (error) {
-        if (waitMessage) try { await ctx.telegram.deleteMessage(ctx.chat.id, waitMessage.message_id); } catch (e) {}
-        ctx.reply("⚠️ Xatolik yuz berdi. Iltimos qayta urinib ko'ring.");
-    }
+    const result = await model.generateContent([prompt, imagePart]);
+    const response = await result.response;
+    await ctx.reply(response.text());
+  } catch (error) {
+    console.error(error);
+    ctx.reply('Rasmni o\'qishda xatolik yuz berdi. Iltimos, boshqa rasm tashlang yoki matn ko\'rinishida yozib yuboring.');
+  }
 });
 
-// Vercel Webhook eksporti
+// Vercel uchun Serverless eksport
 module.exports = async (req, res) => {
-    try {
-        if (req.method === 'POST') {
-            await bot.handleUpdate(req.body);
-        }
-        res.status(200).send('Bot Vercel serverida aktiv!');
-    } catch (error) {
-        console.error('Webhook xatosi:', error);
-        res.status(500).send('Error');
+  try {
+    if (req.method === 'POST') {
+      await bot.handleUpdate(req.body);
     }
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
 };
