@@ -15,24 +15,51 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// /start komandasi bosilganda xuddi rasmda ko'rsatilgandek matn va tugmalarni chiqarish
+// /start komandasi bosilganda asosiy menyu va barcha tugmalarni chiqarish
 bot.start((ctx) => {
   ctx.reply(
     '👋 Asosiy menyu:\n\n📚 BSB va CHSB vazifalarini yechish uchun rasm yuboring:',
     Markup.inlineKeyboard([
+      [Markup.button.callback('📌 Qanday foydalanish kerak?', 'how_to_use')],
+      [Markup.button.callback('💎 VIP Obuna sotib olish', 'vip_info')],
       [Markup.button.callback('👨‍💻 Dasturchi bilan bog\'lanish', 'contact_dev')],
       [Markup.button.callback('❓ Savol berish', 'ask_question')]
     ])
   );
 });
 
-// Dasturchi bilan bog'lanish tugmasi bosilganda
-bot.action('contact_dev', async (ctx) => {
+// Qanday foydalanish kerak?
+bot.action('how_to_use', async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply('Dasturchi bilan bog\'lanish uchun: @Abdumalik_Abduxalilov ga yozishingiz mumkin.');
+  await ctx.reply(
+    '📌 **Botdan qanday foydalaniladi?**\n\n' +
+    '1. Istalgan fan (Matematika, Fizika, Kimyo, Tarix va h.k.) BSB yoki CHSB savollarining rasmini aniq qilib yuboring.\n' +
+    '2. Yoki savolni matn ko\'rinishida yozib yuboring.\n' +
+    '3. Bot bir necha soniya ichida sizga qadam-baqadam to\'liq yechimini chiqarib beradi!'
+  );
 });
 
-// Savol berish tugmasi bosilganda
+// VIP Obuna sotib olish va farqlari
+bot.action('vip_info', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply(
+    '💎 **VIP Obuna haqida ma\'lumot va farqi:**\n\n' +
+    '🔹 **Oddiy versiya:** Barcha savollarga umumiy navbatda javob oladi va kunlik so\'rovlar soni cheklangan bo\'lishi mumkin.\n' +
+    '🔹 **VIP Obuna (Farqi):**\n' +
+    '• 🚀 **Ustuvor navbat:** Savollaringizga birinchilardan bo\'lib, eng yuqori tezlikda javob beriladi.\n' +
+    '• ♾️ **Cheklovsiz yechimlar:** Kun davomida istaganingizcha ko\'p BSB va CHSB rasmlarini tashlashingiz mumkin.\n' +
+    '• 🧠 **Kuchaytirilgan sun\'iy intellekt:** Eng murakkab olimpiada va murakkab masalalarga ham 100% aniq va kengaytirilgan tushuntirishlar beriladi.\n\n' +
+    '💳 VIP obunani ulash uchun dasturchiga yozing: @Abdumalik_Abduxalilov'
+  );
+});
+
+// Dasturchi bilan bog'lanish
+bot.action('contact_dev', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply('👨‍💻 Dasturchi bilan bog\'lanish uchun: @Abdumalik_Abduxalilov ga yozishingiz mumkin.');
+});
+
+// Savol berish
 bot.action('ask_question', async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.reply('Marhamat, o\'zingizni qiziqtirgan savolni yozib yuboring yoki masalaning rasmini tashlang. Men uni qadam-baqadam va oddiy tilda tushuntirib beraman!');
