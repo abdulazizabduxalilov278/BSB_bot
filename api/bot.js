@@ -16,23 +16,27 @@ async function urlToGenerativePart(url, mimeType) {
 }
 
 bot.start((ctx) => {
-  ctx.reply('Salom! Menga istalgan fandan savol yozishingiz yoki masalaning rasmini tashlashingiz mumkin.');
+  ctx.reply('Salom! Menga istalgan fandan savol yozishingiz yoki masalaning rasmini yuborishingiz mumkin. Men uni qadam-baqadam, tushunarli qilib yechib beraman!');
 });
 
+// Matnli xabarlar uchun
 bot.on('text', async (ctx) => {
   try {
     await ctx.sendChatAction('typing');
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const prompt = `Sen har qanday fan bo'yicha mutaxassis o'qituvchisan. Quyidagi savolga o'zbek tilida aniq va tushunarli yechim ber:\n\n${ctx.message.text}`;
+    
+    const prompt = `Sen har qanday fan bo'yicha (matematika, fizika, kimyo, ona tili, tarix va hokazo) tajribali va mehribon o'qituvchisan. Foydalanuvchi yuborgan quyidagi savol yoki masalaga o'zbek tilida oddiy, tushunarli va ketma-ketlikda (qadam-baqadam) to'liq javob ber:\n\n${ctx.message.text}`;
+    
     const result = await model.generateContent(prompt);
     const response = await result.response;
     await ctx.reply(response.text());
   } catch (error) {
     console.error(error);
-    await ctx.reply(`❌ Matnli xatolik: ${error.message}`);
+    ctx.reply('Kechirasiz, savolingizga javob topishda kichik xatolik yuz berdi. Iltimos, boshaqattan yozib yuboring.');
   }
 });
 
+// Rasmli xabarlar uchun
 bot.on('photo', async (ctx) => {
   try {
     await ctx.sendChatAction('typing');
@@ -42,16 +46,15 @@ bot.on('photo', async (ctx) => {
     const imagePart = await urlToGenerativePart(fileLink.href, 'image/jpeg');
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
-    const userCaption = ctx.message.caption || 'Bu rasmdagi masalani qaysi fandan bo\'lishidan qat\'iy nazar tushuntirib yechib ber.';
-    const prompt = `Sen har qanday fan bo'yicha mutaxassis o'qituvchisan. Ushbu rasmdagi vazifani to'liq tushuntirib yechib ber.\nIzoh: ${userCaption}`;
+    const userCaption = ctx.message.caption || 'Bu rasmdagi masalani yoki savolni qaysi fandan bo\'lishidan qat\'iy nazar tushuntirib, qadam-baqadam yechib ber.';
+    const prompt = `Sen har qanday fan bo'yicha tajribali o'qituvchisan. Ushbu rasmdagi vazifani yoki masalani diqqat bilan o'qib chiq va o'zbek tilida oddiy, tushunarli qilib, ketma-ketlikda (qadam-baqadam) yechimini yozib ber.\nFoydalanuvchi izohi: ${userCaption}`;
 
     const result = await model.generateContent([prompt, imagePart]);
     const response = await result.response;
     await ctx.reply(response.text());
   } catch (error) {
     console.error(error);
-    // ANIQ SABABINI KO'RSATISH:
-    await ctx.reply(`❌ Rasm xatoligi sababi: ${error.message}`);
+    ctx.reply('Kechirasiz, rasmni o\'qishda xatolik yuz berdi. Iltimos, boshqaroq aniqroq rasm tashlang yoki matn ko\'rinishida yozib yuboring.');
   }
 });
 
