@@ -49,14 +49,14 @@ bot.action('vip_info', async (ctx) => {
     '• 🚀 **Ustuvor navbat:** Savollaringizga birinchilardan bo\'lib, eng yuqori tezlikda javob beriladi.\n' +
     '• ♾️ **Cheklovsiz yechimlar:** Kun davomida istaganingizcha ko\'p BSB va CHSB rasmlarini tashlashingiz mumkin.\n' +
     '• 🧠 **Kuchaytirilgan sun\'iy intellekt:** Eng murakkab olimpiada va murakkab masalalarga ham 100% aniq va kengaytirilgan tushuntirishlar beriladi.\n\n' +
-    '💳 VIP obunani ulash uchun dasturchiga yozing: @Abdumalik_Abduxalilov'
+    '💳 VIP obunani ulash uchun dasturchiga yozing: @XAVIK_ORG'
   );
 });
 
 // Dasturchi bilan bog'lanish
 bot.action('contact_dev', async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply('👨‍💻 Dasturchi bilan bog\'lanish uchun: @Abdumalik_Abduxalilov ga yozishingiz mumkin.');
+  await ctx.reply('👨‍💻 Dasturchi bilan bog\'lanish uchun: @XAVIK_ORG ga yozishingiz mumkin.');
 });
 
 // Savol berish
