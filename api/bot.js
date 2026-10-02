@@ -15,10 +15,10 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// /start komandasi bosilganda xabar tagida tugmalarni chiqarish
+// /start komandasi bosilganda xuddi rasmda ko'rsatilgandek matn va tugmalarni chiqarish
 bot.start((ctx) => {
   ctx.reply(
-    'Assalomu alaykum! Kerakli bo\'limni tanlang:',
+    '👋 Asosiy menyu:\n\n📚 BSB va CHSB vazifalarini yechish uchun rasm yuboring:',
     Markup.inlineKeyboard([
       [Markup.button.callback('👨‍💻 Dasturchi bilan bog\'lanish', 'contact_dev')],
       [Markup.button.callback('❓ Savol berish', 'ask_question')]
@@ -38,7 +38,7 @@ bot.action('ask_question', async (ctx) => {
   await ctx.reply('Marhamat, o\'zingizni qiziqtirgan savolni yozib yuboring yoki masalaning rasmini tashlang. Men uni qadam-baqadam va oddiy tilda tushuntirib beraman!');
 });
 
-// Matnli xabarlar uchun (savollar va masalalar)
+// Matnli xabarlar uchun
 bot.on('text', async (ctx) => {
   const text = ctx.message.text;
 
@@ -57,7 +57,7 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// Rasmli xabarlar uchun (masala rasmlari)
+// Rasmli xabarlar uchun
 bot.on('photo', async (ctx) => {
   try {
     await ctx.sendChatAction('typing');
