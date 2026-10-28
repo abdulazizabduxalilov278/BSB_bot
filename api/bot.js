@@ -7,6 +7,7 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // 👑 VIP FOYDALANUVCHILAR RO'YXATI
+// Shu yerga vergul bilan ID larni qo'shib borasiz
 const VIP_USERS = [123456789, 987654321]; 
 
 async function urlToGenerativePart(url, mimeType) {
@@ -25,6 +26,7 @@ bot.start((ctx) => {
     Markup.inlineKeyboard([
       [Markup.button.callback('ℹ️ Bot nima uchun kerak?', 'about_bot')],
       [Markup.button.callback('💎 Donat (VIP) va uning foydasi', 'donate_vip')],
+      [Markup.button.callback('🆔 Mening ID raqamimni bilish', 'get_id')],
       [Markup.button.callback('👨‍💻 Admin bilan bog\'lanish', 'contact_admin')],
       [Markup.button.callback('🚀 Botni boshlash (Savol berish)', 'start_asking')]
     ])
@@ -39,6 +41,13 @@ bot.action('about_bot', async (ctx) => {
 bot.action('donate_vip', async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.reply('💎 **Donat (VIP) obunasi:**\n\n• 🚀 Tezkor va Navbatsiz javob.\n• 🧠 Super AI (Pro Model): Qiyin olimpiada savollariga ham 100% aniq javoblar.\n\n💳 VIP xarid qilish uchun adminga yozing.');
+});
+
+// YANGI BO'LIM: ID ni olish tugmasi bosilganda
+bot.action('get_id', async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.from.id;
+  await ctx.reply(`Sizning Telegram ID raqamingiz:\n\n\`${userId}\`\n\n*(Raqam ustiga bir marta bossangiz, avtomatik nusxalanadi) 📋*`, { parse_mode: 'Markdown' });
 });
 
 bot.action('contact_admin', async (ctx) => {
@@ -60,7 +69,6 @@ bot.on(message('text'), async (ctx) => {
     await ctx.sendChatAction('typing');
     
     const isVIP = VIP_USERS.includes(ctx.from.id);
-    // 002 aniq versiyalarini ishlatamiz
     const selectedModel = isVIP ? 'gemini-1.5-pro-002' : 'gemini-1.5-flash-002';
     const model = genAI.getGenerativeModel({ model: selectedModel });
     
@@ -90,7 +98,6 @@ bot.on(message('photo'), async (ctx) => {
     const imagePart = await urlToGenerativePart(fileLink.href, 'image/jpeg');
     
     const isVIP = VIP_USERS.includes(ctx.from.id);
-    // 002 aniq versiyalarini ishlatamiz
     const selectedModel = isVIP ? 'gemini-1.5-pro-002' : 'gemini-1.5-flash-002';
     const model = genAI.getGenerativeModel({ model: selectedModel });
     
