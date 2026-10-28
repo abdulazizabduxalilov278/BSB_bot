@@ -1,5 +1,5 @@
 const { Telegraf, Markup } = require('telegraf');
-const { message } = require('telegraf/filters'); // Yangi standart filtr
+const { message } = require('telegraf/filters');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 
@@ -48,14 +48,14 @@ bot.action('start_asking', async (ctx) => {
   await ctx.reply('🚀 **Bot ishga tayyor!**\n\nMarhamat, o\'zingizni qiziqtirgan savolni shu yerga yozing yoki masalaning rasmini yuboring. Barchasini ajoyib qilib yechib beraman!');
 });
 
-// Eski 'text' o'rniga yangi message('text') ishlatiladi, chiziq yo'qoladi
 bot.on(message('text'), async (ctx) => {
   const text = ctx.message.text;
   if (text.startsWith('/')) return;
 
   try {
     await ctx.sendChatAction('typing');
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    // Model nomi barqaror versiyaga o'zgartirildi
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     const prompt = `Sen har qanday fan bo'yicha tajribali o'qituvchisan. Foydalanuvchi yuborgan quyidagi savol yoki masalaga o'zbek tilida oddiy odam tushunadigan qilib, ketma-ketlikda (qadam-baqadam) to'liq yechim ber:\n\n${text}`;
     
@@ -73,7 +73,6 @@ bot.on(message('text'), async (ctx) => {
   }
 });
 
-// Eski 'photo' o'rniga yangi message('photo') ishlatiladi, chiziq yo'qoladi
 bot.on(message('photo'), async (ctx) => {
   try {
     await ctx.sendChatAction('typing');
@@ -81,7 +80,8 @@ bot.on(message('photo'), async (ctx) => {
     const fileLink = await ctx.telegram.getFileLink(photo.file_id);
     
     const imagePart = await urlToGenerativePart(fileLink.href, 'image/jpeg');
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    // Model nomi barqaror versiyaga o'zgartirildi
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     const userCaption = ctx.message.caption || 'Bu rasmdagi masalani yoki savolni qaysi fandan bo\'lishidan qat\'iy nazar oddiy va tushunarli qilib, qadam-baqadam yechib ber.';
     const prompt = `Sen tajribali o'qituvchisan. Ushbu rasmdagi vazifani yoki masalani diqqat bilan o'qib chiq va o'zbek tilida oddiy, tushunarli qilib, ketma-ketlikda (qadam-baqadam) yechimini yozib ber.\nFoydalanuvchi izohi: ${userCaption}`;
