@@ -54,8 +54,8 @@ bot.on(message('text'), async (ctx) => {
 
   try {
     await ctx.sendChatAction('typing');
-    // Model nomi barqaror versiyaga o'zgartirildi
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Model aniq versiyasi bilan ko'rsatildi
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
     
     const prompt = `Sen har qanday fan bo'yicha tajribali o'qituvchisan. Foydalanuvchi yuborgan quyidagi savol yoki masalaga o'zbek tilida oddiy odam tushunadigan qilib, ketma-ketlikda (qadam-baqadam) to'liq yechim ber:\n\n${text}`;
     
@@ -80,8 +80,8 @@ bot.on(message('photo'), async (ctx) => {
     const fileLink = await ctx.telegram.getFileLink(photo.file_id);
     
     const imagePart = await urlToGenerativePart(fileLink.href, 'image/jpeg');
-    // Model nomi barqaror versiyaga o'zgartirildi
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Model aniq versiyasi bilan ko'rsatildi
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
     
     const userCaption = ctx.message.caption || 'Bu rasmdagi masalani yoki savolni qaysi fandan bo\'lishidan qat\'iy nazar oddiy va tushunarli qilib, qadam-baqadam yechib ber.';
     const prompt = `Sen tajribali o'qituvchisan. Ushbu rasmdagi vazifani yoki masalani diqqat bilan o'qib chiq va o'zbek tilida oddiy, tushunarli qilib, ketma-ketlikda (qadam-baqadam) yechimini yozib ber.\nFoydalanuvchi izohi: ${userCaption}`;
