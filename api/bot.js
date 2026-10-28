@@ -15,59 +15,49 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// /start komandasi bosilganda asosiy menyu va barcha tugmalarni chiqarish
+// 1. /start komandasi bosilganda chiqadigan 4 ta bo'limli mukammal menyu
 bot.start((ctx) => {
   ctx.reply(
-    '👋 Asosiy menyu:\n\n📚 BSB va CHSB vazifalarini yechish uchun rasm yuboring:',
+    '👋 Assalomu alaykum! Botga xush kelibsiz.\n\nBotdan foydalanishni boshlash uchun quyidagi bo\'limlardan birini tanlang:',
     Markup.inlineKeyboard([
-      [Markup.button.callback('📌 Qanday foydalanish kerak?', 'how_to_use')],
-      [Markup.button.callback('💎 VIP Obuna sotib olish', 'vip_info')],
-      [Markup.button.callback('👨‍💻 Dasturchi bilan bog\'lanish', 'contact_dev')],
-      [Markup.button.callback('❓ Savol berish', 'ask_question')]
+      [Markup.button.callback('ℹ️ Bot nima uchun kerak?', 'about_bot')],
+      [Markup.button.callback('💎 Donat (VIP) va uning foydasi', 'donate_vip')],
+      [Markup.button.callback('👨‍💻 Admin bilan bog\'lanish', 'contact_admin')],
+      [Markup.button.callback('🚀 Botni boshlash (Savol berish)', 'start_asking')]
     ])
   );
 });
 
-// Qanday foydalanish kerak?
-bot.action('how_to_use', async (ctx) => {
+// 1-tugma: Bot nima uchun kerakligi
+bot.action('about_bot', async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply(
-    '📌 **Botdan qanday foydalaniladi?**\n\n' +
-    '1. Istalgan fan (Matematika, Fizika, Kimyo, Tarix va h.k.) BSB yoki CHSB savollarining rasmini aniq qilib yuboring.\n' +
-    '2. Yoki savolni matn ko\'rinishida yozib yuboring.\n' +
-    '3. Bot bir necha soniya ichida sizga qadam-baqadam to\'liq yechimini chiqarib beradi!'
-  );
+  await ctx.reply('ℹ️ **Bot nima uchun kerak?**\n\nBu bot o\'quvchi va talabalarga BSB, CHSB va istalgan fandan berilgan murakkab vazifalarni yechishda yordam beradi. Siz savolni yozib yuborishingiz yoki rasmga olib tashlashingiz mumkin. Bot qadam-baqadam to\'liq yechim taqdim etadi!');
 });
 
-// VIP Obuna sotib olish va farqlari
-bot.action('vip_info', async (ctx) => {
+// 2-tugma: Donat (VIP) va uning foydasi
+bot.action('donate_vip', async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply(
-    '💎 **VIP Obuna haqida ma\'lumot va farqi:**\n\n' +
-    '🔹 **Oddiy versiya:** Barcha savollarga umumiy navbatda javob oladi va kunlik so\'rovlar soni cheklangan bo\'lishi mumkin.\n' +
-    '🔹 **VIP Obuna (Farqi):**\n' +
-    '• 🚀 **Ustuvor navbat:** Savollaringizga birinchilardan bo\'lib, eng yuqori tezlikda javob beriladi.\n' +
-    '• ♾️ **Cheklovsiz yechimlar:** Kun davomida istaganingizcha ko\'p BSB va CHSB rasmlarini tashlashingiz mumkin.\n' +
-    '• 🧠 **Kuchaytirilgan sun\'iy intellekt:** Eng murakkab olimpiada va murakkab masalalarga ham 100% aniq va kengaytirilgan tushuntirishlar beriladi.\n\n' +
-    '💳 VIP obunani ulash uchun dasturchiga yozing: @XAVIK_ORG'
-  );
+  await ctx.reply('💎 **Donat (VIP) obunasi va uning afzalliklari:**\n\n• 🚀 **Tezkor va Navbatsiz:** Savollaringizga birinchilardan bo\'lib eng tezkor javobni olasiz.\n• ♾️ **Cheklovsiz:** Kunlik so\'rovlar soniga cheklov qo\'yilmaydi.\n• 🧠 **Super AI:** Eng qiyin olimpiada savollariga ham kengaytirilgan 100% aniq javoblar olasiz.\n\n💳 VIP obuna sotib olish uchun "Admin bilan bog\'lanish" bo\'limiga kiring.');
 });
 
-// Dasturchi bilan bog'lanish
-bot.action('contact_dev', async (ctx) => {
+// 3-tugma: Admin bilan bog'lanish (Donat xarid qilish uchun)
+bot.action('contact_admin', async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply('👨‍💻 Dasturchi bilan bog\'lanish uchun: @XAVIK_ORG ga yozishingiz mumkin.');
+  await ctx.reply('👨‍💻 **Admin bilan bog\'lanish:**\n\nVIP (Donat) obuna sotib olish yoki taklif/shikoyatlar uchun bevosita dasturchiga yozing: 👉 @Abdumalik_Abduxalilov');
 });
 
-// Savol berish
-bot.action('ask_question', async (ctx) => {
+// 4-tugma: Botni boshlash (Savol berish)
+bot.action('start_asking', async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply('Marhamat, o\'zingizni qiziqtirgan savolni yozib yuboring yoki masalaning rasmini tashlang. Men uni qadam-baqadam va oddiy tilda tushuntirib beraman!');
+  await ctx.reply('🚀 **Bot ishga tayyor!**\n\nMarhamat, o\'zingizni qiziqtirgan savolni shu yerga yozing yoki masalaning rasmini yuboring. Barchasini ajoyib qilib yechib beraman!');
 });
 
-// Matnli xabarlar uchun
+// Matnli xabarlar uchun AI yechimi
 bot.on('text', async (ctx) => {
   const text = ctx.message.text;
+
+  // Agar foydalanuvchi /start yoki boshqa buyruq yozsa, uni oddiy matn deb o'ylamasligi uchun:
+  if (text.startsWith('/')) return;
 
   try {
     await ctx.sendChatAction('typing');
@@ -76,15 +66,22 @@ bot.on('text', async (ctx) => {
     const prompt = `Sen har qanday fan bo'yicha (matematika, fizika, kimyo, ona tili, tarix va hokazo) tajribali va mehribon o'qituvchisan. Foydalanuvchi yuborgan quyidagi savol yoki masalaga o'zbek tilida oddiy odam tushunadigan qilib, ketma-ketlikda (qadam-baqadam) to'liq yechim ber:\n\n${text}`;
     
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    await ctx.reply(response.text());
+    const answer = await result.response.text();
+    
+    // Telegram bitta xabarda faqat 4096 ta belgi qabul qiladi. Xato bermasligi uchun uni moslaymiz:
+    if (answer.length > 4000) {
+        await ctx.reply(answer.substring(0, 4000) + '\n\n...(Javob juda uzun bo\'lgani uchun qisqartirildi)');
+    } else {
+        await ctx.reply(answer);
+    }
   } catch (error) {
     console.error(error);
-    ctx.reply('Kechirasiz, savolingizga javob topishda kichik xatolik yuz berdi. Iltimos, qaytadan yozib yuboring.');
+    // Endi xato bo'lsa, qanday xato ekanligini ochiq aytadi, "Kechirasiz" deb qotib qolmaydi:
+    await ctx.reply(`❌ Xatolik yuz berdi: ${error.message}\n(Iltimos, qaytadan yuborib ko'ring)`);
   }
 });
 
-// Rasmli xabarlar uchun
+// Rasmli xabarlar uchun AI yechimi
 bot.on('photo', async (ctx) => {
   try {
     await ctx.sendChatAction('typing');
@@ -98,11 +95,16 @@ bot.on('photo', async (ctx) => {
     const prompt = `Sen tajribali o'qituvchisan. Ushbu rasmdagi vazifani yoki masalani diqqat bilan o'qib chiq va o'zbek tilida oddiy, tushunarli qilib, ketma-ketlikda (qadam-baqadam) yechimini yozib ber.\nFoydalanuvchi izohi: ${userCaption}`;
 
     const result = await model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    await ctx.reply(response.text());
+    const answer = await result.response.text();
+    
+    if (answer.length > 4000) {
+        await ctx.reply(answer.substring(0, 4000) + '\n\n...(Javob qisqartirildi)');
+    } else {
+        await ctx.reply(answer);
+    }
   } catch (error) {
     console.error(error);
-    ctx.reply('Kechirasiz, rasmni o\'qishda xatolik yuz berdi. Iltimos, boshqa aniqroq rasm tashlang yoki matn ko\'rinishida yozib yuboring.');
+    await ctx.reply(`❌ Rasmni o\'qishda xatolik yuz berdi: ${error.message}`);
   }
 });
 
