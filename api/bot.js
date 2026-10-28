@@ -1,4 +1,5 @@
 const { Telegraf, Markup } = require('telegraf');
+const { message } = require('telegraf/filters'); // Yangi standart filtr
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 
@@ -47,7 +48,8 @@ bot.action('start_asking', async (ctx) => {
   await ctx.reply('🚀 **Bot ishga tayyor!**\n\nMarhamat, o\'zingizni qiziqtirgan savolni shu yerga yozing yoki masalaning rasmini yuboring. Barchasini ajoyib qilib yechib beraman!');
 });
 
-bot.on('text', async (ctx) => {
+// Eski 'text' o'rniga yangi message('text') ishlatiladi, chiziq yo'qoladi
+bot.on(message('text'), async (ctx) => {
   const text = ctx.message.text;
   if (text.startsWith('/')) return;
 
@@ -71,7 +73,8 @@ bot.on('text', async (ctx) => {
   }
 });
 
-bot.on('photo', async (ctx) => {
+// Eski 'photo' o'rniga yangi message('photo') ishlatiladi, chiziq yo'qoladi
+bot.on(message('photo'), async (ctx) => {
   try {
     await ctx.sendChatAction('typing');
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
@@ -81,4 +84,30 @@ bot.on('photo', async (ctx) => {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
     
     const userCaption = ctx.message.caption || 'Bu rasmdagi masalani yoki savolni qaysi fandan bo\'lishidan qat\'iy nazar oddiy va tushunarli qilib, qadam-baqadam yechib ber.';
-    const prompt = `Sen tajribali o'qituvchisan. Ushbu rasmdagi vazifani yoki masalani diqqat bilan o'qib chiq va o'zbek tilida oddiy, tushunarli qilib, ketma-ketlikda
+    const prompt = `Sen tajribali o'qituvchisan. Ushbu rasmdagi vazifani yoki masalani diqqat bilan o'qib chiq va o'zbek tilida oddiy, tushunarli qilib, ketma-ketlikda (qadam-baqadam) yechimini yozib ber.\nFoydalanuvchi izohi: ${userCaption}`;
+
+    const result = await model.generateContent([prompt, imagePart]);
+    const answer = await result.response.text();
+    
+    if (answer.length > 4000) {
+        await ctx.reply(answer.substring(0, 4000) + '\n\n...(Javob qisqartirildi)');
+    } else {
+        await ctx.reply(answer);
+    }
+  } catch (error) {
+    console.error(error);
+    await ctx.reply(`❌ Rasmni o\'qishda xatolik yuz berdi: ${error.message}`);
+  }
+});
+
+module.exports = async (req, res) => {
+  try {
+    if (req.method === 'POST') {
+      await bot.handleUpdate(req.body);
+    }
+    res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
