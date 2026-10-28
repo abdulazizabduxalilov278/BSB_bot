@@ -7,8 +7,11 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // 👑 VIP FOYDALANUVCHILAR RO'YXATI
-// Shu yerga vergul bilan ID larni qo'shib borasiz
+// Shu yerga vergul bilan mijozlarning ID larini qo'shib borasiz
 const VIP_USERS = [123456789, 987654321]; 
+
+// 👨‍💻 ADMIN ID RAQAMI (Buni faqat siz ishlata olishingiz uchun o'z ID raqamingizni yozing)
+const ADMIN_ID = 123456789; 
 
 async function urlToGenerativePart(url, mimeType) {
   const response = await axios.get(url, { responseType: 'arraybuffer' });
@@ -43,7 +46,6 @@ bot.action('donate_vip', async (ctx) => {
   await ctx.reply('💎 **Donat (VIP) obunasi:**\n\n• 🚀 Tezkor va Navbatsiz javob.\n• 🧠 Super AI (Pro Model): Qiyin olimpiada savollariga ham 100% aniq javoblar.\n\n💳 VIP xarid qilish uchun adminga yozing.');
 });
 
-// YANGI BO'LIM: ID ni olish tugmasi bosilganda
 bot.action('get_id', async (ctx) => {
   await ctx.answerCbQuery();
   const userId = ctx.from.id;
@@ -60,10 +62,37 @@ bot.action('start_asking', async (ctx) => {
   await ctx.reply('🚀 **Bot ishga tayyor!**\n\nMarhamat, savolni yozing yoki masalaning rasmini yuboring.');
 });
 
+// 👑 MAXSUS ADMIN BUYRUG'I: VIP Tabrik yuborish
+bot.command('tabrik', async (ctx) => {
+  // Faqat admin ishlata olishini ta'minlash
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  const parts = ctx.message.text.split(' ');
+  
+  if (parts.length < 2) {
+    return ctx.reply('⚠️ Iltimos, mijozning ID raqamini kiriting. \nMasalan: `/tabrik 123456789`', { parse_mode: 'Markdown' });
+  }
+
+  const targetUserId = parts[1];
+
+  try {
+    // Mijozga tabrik yuborish
+    await ctx.telegram.sendMessage(
+      targetUserId, 
+      '🎉 **Tabriklaymiz!**\n\n💎 Sizga **VIP obuna** muvaffaqiyatli ulandi!\n\n🚀 Endi siz eng kuchli sun\'iy intellekt (Pro Model) dan cheklovlarsiz va eng yuqori tezlikda foydalanishingiz mumkin. \n\nMarhamat, istalgan murakkab savol yoki masalangizni yuboring! Barchasini ajoyib qilib yechib beraman!', 
+      { parse_mode: 'Markdown' }
+    );
+    // Adminga hisobot berish
+    await ctx.reply(`✅ Tabrik xabari ${targetUserId} ID egasiga muvaffaqiyatli yuborildi!`);
+  } catch (error) {
+    await ctx.reply(`❌ Xatolik! Bunday ID topilmadi yoki foydalanuvchi botni bloklagan: ${error.message}`);
+  }
+});
+
 // Matnli savollar
 bot.on(message('text'), async (ctx) => {
   const text = ctx.message.text;
-  if (text.startsWith('/')) return;
+  if (text.startsWith('/')) return; // Komandalarni e'tiborsiz qoldirish
 
   try {
     await ctx.sendChatAction('typing');
