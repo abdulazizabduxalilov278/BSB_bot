@@ -98,7 +98,7 @@ bot.on(message('text'), async (ctx) => {
     await ctx.sendChatAction('typing');
     
     const isVIP = VIP_USERS.includes(ctx.from.id);
-    const selectedModel = isVIP ? 'gemini-1.5-pro-002' : 'gemini-1.5-flash-002';
+    const selectedModel = isVIP ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
     const model = genAI.getGenerativeModel({ model: selectedModel });
     
     const prompt = `Sen har qanday fan bo'yicha tajribali o'qituvchisan. Savolga o'zbek tilida qadam-baqadam to'liq yechim ber:\n\n${text}`;
@@ -127,7 +127,7 @@ bot.on(message('photo'), async (ctx) => {
     const imagePart = await urlToGenerativePart(fileLink.href, 'image/jpeg');
     
     const isVIP = VIP_USERS.includes(ctx.from.id);
-    const selectedModel = isVIP ? 'gemini-1.5-pro-002' : 'gemini-1.5-flash-002';
+    const selectedModel = isVIP ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
     const model = genAI.getGenerativeModel({ model: selectedModel });
     
     const userCaption = ctx.message.caption || 'Rasmdagi masalani qadam-baqadam yechib ber.';
