@@ -13,6 +13,22 @@ const VIP_USERS = [123456789, 987654321];
 // 👨‍💻 ADMIN ID RAQAMI (Buni faqat siz ishlata olishingiz uchun o'z ID raqamingizni yozing)
 const ADMIN_ID = 123456789; 
 
+// 🔁 TAKRORIY XABARLARNING OLDINI OLISH (Telegram webhook retry himoyasi)
+// Agar javob uzoq kutilsa, Telegram xuddi shu xabarni qayta yuboradi.
+// Shu sababli oldin ishlangan update_id larni saqlab, takrorlanganini e'tiborsiz qoldiramiz.
+const processedUpdates = new Set();
+const MAX_CACHE_SIZE = 500;
+
+function isDuplicateUpdate(updateId) {
+  if (processedUpdates.has(updateId)) return true;
+  processedUpdates.add(updateId);
+  if (processedUpdates.size > MAX_CACHE_SIZE) {
+    const first = processedUpdates.values().next().value;
+    processedUpdates.delete(first);
+  }
+  return false;
+}
+
 async function urlToGenerativePart(url, mimeType) {
   const response = await axios.get(url, { responseType: 'arraybuffer' });
   return {
@@ -152,7 +168,14 @@ bot.on(message('photo'), async (ctx) => {
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') {
-      await bot.handleUpdate(req.body);
+      const update = req.body;
+
+      // Takroriy (retry qilingan) update bo'lsa — darhol 200 qaytarib, qayta ishlamaymiz
+      if (update && update.update_id !== undefined && isDuplicateUpdate(update.update_id)) {
+        return res.status(200).json({ ok: true, duplicate: true });
+      }
+
+      await bot.handleUpdate(update);
     }
     res.status(200).json({ ok: true });
   } catch (e) {
