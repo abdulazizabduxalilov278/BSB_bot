@@ -36,9 +36,22 @@ const DAILY_LIMIT_VIP = 40;
 const COOLDOWN_FREE = 10; // Oddiy foydalanuvchilar: 10 sekund
 const COOLDOWN_VIP = 3;   // VIP foydalanuvchilar: 3 sekund
 
-// 🤖 RASMIY BARQAROR MODELLAR
-const MODEL_PRO = 'gemini-1.5-pro';
-const MODEL_FLASH = 'gemini-1.5-flash';
+// 🤖 RASMIY VA ANIQ ISHLAYDIGAN MODELLAR RO'YXATI
+// Google ba'zi hisoblarda 'gemini-1.5-flash' o'rniga '002' yoki 'latest' talab qiladi (404 oldini olish uchun)
+const PRO_MODELS = [
+  'gemini-1.5-pro-002',
+  'gemini-1.5-pro-latest',
+  'gemini-1.5-pro',
+  'gemini-1.5-flash-002',
+  'gemini-1.5-flash',
+];
+
+const FLASH_MODELS = [
+  'gemini-1.5-flash-002',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-flash',
+  'gemini-2.0-flash',
+];
 
 // ⏱️ COOLDOWN TEKSHIRUVI
 const userLastMessageTime = new Map();
@@ -153,9 +166,9 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// 🔄 AI GENERATSIYASI (Pro band bo'lsa darhol Flash ga o'tadi)
+// 🔄 AI GENERATSIYASI (404/503 bo'lsa darhol keyingi modelga o'tadi)
 async function callGemini(contents, wantPro = false) {
-  const modelsToTry = wantPro ? [MODEL_PRO, MODEL_FLASH] : [MODEL_FLASH];
+  const modelsToTry = wantPro ? PRO_MODELS : FLASH_MODELS;
   let lastError;
 
   for (const modelName of modelsToTry) {
@@ -352,11 +365,12 @@ bot.on(message('text'), async (ctx) => {
 
     stopTyping();
 
-    if (wantPro && usedModel === MODEL_PRO) {
+    const isPro = wantPro && usedModel.includes('pro');
+    if (isPro) {
       await incrementUsage(ctx.from.id);
     }
 
-    const badge = (wantPro && usedModel === MODEL_PRO)
+    const badge = isPro
       ? (isVIP ? `👑 **VIP Yechim (Pro Model) [${usage + 1}/${limit}]:**` : `🧠 **Pro Model [${usage + 1}/${limit}]:**`)
       : `⚡ **Tezkor Yechim:**`;
 
@@ -402,11 +416,12 @@ bot.on(message('photo'), async (ctx) => {
 
     stopTyping();
 
-    if (wantPro && usedModel === MODEL_PRO) {
+    const isPro = wantPro && usedModel.includes('pro');
+    if (isPro) {
       await incrementUsage(ctx.from.id);
     }
 
-    const badge = (wantPro && usedModel === MODEL_PRO)
+    const badge = isPro
       ? (isVIP ? `👑 **VIP Yechim (Pro Model) [${usage + 1}/${limit}]:**` : `🧠 **Pro Model [${usage + 1}/${limit}]:**`)
       : `⚡ **Tezkor Yechim:**`;
 
