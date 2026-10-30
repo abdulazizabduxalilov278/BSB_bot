@@ -222,7 +222,7 @@ bot.start((ctx) => {
   ).catch(console.error);
 });
 
-bot.action('about_bot', async (ctx) => {
+bot.action(['about_bot', 'help'], async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
   await ctx.reply(
     'ℹ️ **Bot haqida:**\n\n' +
@@ -233,15 +233,22 @@ bot.action('about_bot', async (ctx) => {
   ).catch(console.error);
 });
 
-bot.action('donate_vip', async (ctx) => {
+bot.action(['donate_vip', 'vip_info'], async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
   await ctx.reply(
-    `💎 **VIP obuna imtiyozlari:**\n\n` +
-    `⚡ **Tezkor javob:** Kutish vaqti (cooldown) atigi **${COOLDOWN_VIP} soniya** (oddiylar uchun ${COOLDOWN_FREE}s).\n` +
-    `🧠 **Super AI:** Kuniga **${DAILY_LIMIT_VIP} marta** kuchli Pro modeldan foydalanish.\n` +
+    `💎 **VIP obuna va uning imtiyozlari:**\n\n` +
+    `💰 **Obuna narxi:** 1 oyga **10 000 so'm**\n\n` +
+    `✨ **Sizga beriladigan imtiyozlar:**\n` +
+    `⚡ **Tezkor javob:** Kutish vaqti (cooldown) atigi **${COOLDOWN_VIP} soniya** (oddiy foydalanuvchilarda ${COOLDOWN_FREE}s).\n` +
+    `🧠 **Super AI (Pro Model):** Kuniga **${DAILY_LIMIT_VIP} marta** eng kuchli Pro AI modelidan foydalanish.\n` +
     `👑 **Ustuvorlik:** Server band bo'lganda ham navbatsiz xizmat.\n\n` +
-    `💳 VIP obuna olish uchun adminga yozing: @XAVIK_ORG`,
-    { parse_mode: 'Markdown' }
+    `💳 **VIP xarid qilish uchun adminga yozing:** 👇`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.url('💳 Obuna sotib olish (@XAVIK_ORG)', 'https://t.me/XAVIK_ORG')]
+      ])
+    }
   ).catch(console.error);
 });
 
