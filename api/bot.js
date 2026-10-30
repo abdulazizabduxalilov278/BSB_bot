@@ -1,6 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
 const { message } = require('telegraf/filters');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 const axios = require('axios');
 
@@ -19,22 +19,21 @@ const DAILY_LIMIT_FREE = 10;
 const DAILY_LIMIT_VIP = 40;
 
 // ⏱️ COOLDOWN (soniyada)
-const COOLDOWN_FREE = 10;
-const COOLDOWN_VIP = 3;
+const COOLDOWN_FREE = 10; // Oddiy foydalanuvchilar: 10 sekund
+const COOLDOWN_VIP = 3;   // VIP foydalanuvchilar: 3 sekund
 
-// 🤖 MODEL PRIORITET RO'YXATI
-// Yangi model chiqsa — ro'yxat boshiga qo'shing, shu kifoya!
-const PRO_MODELS = [
-  'gemini-2.5-pro-preview-05-06',
-  'gemini-2.0-pro-exp',
-  'gemini-1.5-pro-latest',
-  'gemini-1.5-pro',
-];
-const FLASH_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-flash',
+// 🤖 RASMIY VA BARQAROR MODELLAR
+// gemini-1.5-pro: VIP va Pro limit uchun
+// gemini-1.5-flash: Eng tez, 503 bermaydigan, ishonchli asosiy model
+const MODEL_PRO = 'gemini-1.5-pro';
+const MODEL_FLASH = 'gemini-1.5-flash';
+
+// Xavfsizlik filtrlari - bot noo'rin bloklanib qolmasligi uchun
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
 // ⏱️ COOLDOWN TEKSHIRUVI
@@ -68,7 +67,8 @@ function isDuplicateUpdate(updateId) {
   if (processedUpdates.has(updateId)) return true;
   processedUpdates.add(updateId);
   if (processedUpdates.size > MAX_CACHE_SIZE) {
-    processedUpdates.delete(processedUpdates.values().next().value);
+    const first = processedUpdates.values().next().value;
+    processedUpdates.delete(first);
   }
   return false;
 }
@@ -78,44 +78,62 @@ function todayString() {
 }
 
 async function getTodayUsage(userId) {
-  const { data, error } = await supabase
-    .from('usage_limits')
-    .select('pro_count')
-    .eq('user_id', userId)
-    .eq('usage_date', todayString())
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('usage_limits')
+      .select('pro_count')
+      .eq('user_id', userId)
+      .eq('usage_date', todayString())
+      .maybeSingle();
 
-  if (error) { console.error('getTodayUsage:', error.message); return 0; }
-  return data ? data.pro_count : 0;
+    if (error) { console.error('getTodayUsage:', error.message); return 0; }
+    return data ? data.pro_count : 0;
+  } catch (e) {
+    console.error('getTodayUsage catch:', e);
+    return 0;
+  }
 }
 
 async function incrementUsage(userId) {
-  const current = await getTodayUsage(userId);
-  const { error } = await supabase
-    .from('usage_limits')
-    .upsert(
-      { user_id: userId, usage_date: todayString(), pro_count: current + 1 },
-      { onConflict: 'user_id,usage_date' }
-    );
-  if (error) console.error('incrementUsage:', error.message);
+  try {
+    const current = await getTodayUsage(userId);
+    const { error } = await supabase
+      .from('usage_limits')
+      .upsert(
+        { user_id: userId, usage_date: todayString(), pro_count: current + 1 },
+        { onConflict: 'user_id,usage_date' }
+      );
+    if (error) console.error('incrementUsage:', error.message);
+  } catch (e) {
+    console.error('incrementUsage catch:', e);
+  }
 }
 
 async function saveHistory(userId, question, answer) {
-  const { error } = await supabase
-    .from('chat_history')
-    .insert({ user_id: userId, question, answer: answer.substring(0, 2000) });
-  if (error) console.error('saveHistory:', error.message);
+  try {
+    const { error } = await supabase
+      .from('chat_history')
+      .insert({ user_id: userId, question, answer: answer.substring(0, 2000) });
+    if (error) console.error('saveHistory:', error.message);
+  } catch (e) {
+    console.error('saveHistory catch:', e);
+  }
 }
 
 async function getHistory(userId, limit = 5) {
-  const { data, error } = await supabase
-    .from('chat_history')
-    .select('question, answer, created_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) { console.error('getHistory:', error.message); return []; }
-  return data || [];
+  try {
+    const { data, error } = await supabase
+      .from('chat_history')
+      .select('question, answer, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) { console.error('getHistory:', error.message); return []; }
+    return data || [];
+  } catch (e) {
+    console.error('getHistory catch:', e);
+    return [];
+  }
 }
 
 function startTypingLoop(ctx) {
@@ -131,73 +149,78 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// 🔄 SMART RETRY + FALLBACK (barcha modellarni sinab ko'radi)
-async function generateWithRetry(modelsList, contents) {
+// 🔄 TEZKOR VA ISHONCHLI AI GENERATSIYASI
+// Agar Pro model band bo'lsa (503/429), zudlik bilan Flash modelga o'tadi
+async function callGemini(contents, wantPro = false) {
+  const modelsToTry = wantPro ? [MODEL_PRO, MODEL_FLASH] : [MODEL_FLASH];
   let lastError;
 
-  for (const modelName of modelsList) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(contents);
-        return { result, usedModel: modelName };
-      } catch (err) {
-        lastError = err;
-        const isRetryable = err.message && (
-          err.message.includes('503') ||
-          err.message.includes('Service Unavailable') ||
-          err.message.includes('overloaded') ||
-          err.message.includes('high demand') ||
-          err.message.includes('429') ||
-          err.message.includes('rate limit') ||
-          err.message.includes('quota') ||
-          err.message.includes('404')
-        );
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        safetySettings: SAFETY_SETTINGS,
+      });
 
-        if (isRetryable && attempt < 2) {
-          await new Promise(r => setTimeout(r, 1200));
-          continue;
+      const result = await model.generateContent(contents);
+      
+      let answerText = '';
+      try {
+        answerText = result.response.text();
+      } catch (respErr) {
+        // Agar javob safety yoki boshqa sabab bilan bloklangan bo'lsa
+        const candidate = result?.response?.candidates?.[0];
+        if (candidate?.finishReason) {
+          answerText = '⚠️ Ushbu savolga xavfsizlik qoidalari tufayli to\'liq javob berib bo\'lmadi. Iltimos, darslik yoki fan bo\'yicha boshqa savol yuboring.';
+        } else {
+          throw respErr;
         }
-        break; // keyingi modelga o'tish
       }
+
+      return { text: answerText, usedModel: modelName };
+    } catch (err) {
+      lastError = err;
+      console.error(`Model ${modelName} error:`, err.message);
+      // Agar yana boshqa model bo'lsa, davom etamiz
+      continue;
     }
   }
 
   throw lastError;
 }
 
-// 🧠 Model tanlash
-async function resolveModel(userId) {
+// 🧠 Foydalanuvchi modelini aniqlash
+async function resolveModelChoice(userId) {
   const isVIP = VIP_USERS.includes(userId);
   const limit = isVIP ? DAILY_LIMIT_VIP : DAILY_LIMIT_FREE;
   const usage = await getTodayUsage(userId);
+  const canUsePro = usage < limit;
 
-  if (usage < limit) {
-    return { models: PRO_MODELS, isVIP, usedPro: true, usage, limit };
-  }
-  return { models: FLASH_MODELS, isVIP, usedPro: false, usage, limit };
+  return { wantPro: canUsePro, isVIP, usage, limit };
 }
 
-// 📝 Prompt qolip
+// 📝 Qisqa va chiroyli javob uchun qolip
 function buildPrompt(userText, isImage = false) {
   return (
-    `Sen BSB, CHSB va barcha fanlar bo'yicha aqlli AI yordamchisan.\n\n` +
+    `Sen har qanday fan bo'yicha tajribali o'qituvchisan.\n` +
     `QOIDALAR:\n` +
-    `- Faqat o'zbek tilida yoz\n` +
-    `- Qisqa va tushunarli yoz (maksimal 250-300 so'z)\n` +
-    `- Har bir muhim qadamni emoji bilan boshla\n` +
-    `- Oxirida 1 qatorlik xulosa ber\n\n` +
-    (isImage ? `Rasmdagi masalani yech:\n${userText}` : `Savol: ${userText}`)
+    `1. O'zbek tilida yoz.\n` +
+    `2. Qisqa, aniq va tushunarli bo'lsin (ortiqcha gaplarsiz, maksimal 200-300 so'z).\n` +
+    `3. Chiroyli o'qilishi uchun tegishli joylariga stiker/emojilar qo'sh (masalan: 💡, 📝, 📌, ✅, 🔢).\n` +
+    `4. Muhim formulalar va xulosani alohida ajratib ko'rsat.\n\n` +
+    (isImage ? `Rasmdagi masalani yech. Foydalanuvchi izohi: ${userText}` : `Savol: ${userText}`)
   );
 }
 
 // ═══════════════════════════════
-//           BOT HANDLERLAR
+//           BOT BUYRUQLARI
 // ═══════════════════════════════
 
 bot.start((ctx) => {
   ctx.reply(
-    '👋 Assalomu alaykum! Botga xush kelibsiz.\n\n📚 BSB, CHSB va istalgan fandan yordam beraman!\n\nQuyidagi bo\'limlardan birini tanlang:',
+    '👋 Assalomu alaykum! Botga xush kelibsiz.\n\n' +
+    '📚 BSB, CHSB va barcha fanlardan murakkab masalalarni yechishda yordam beraman!\n\n' +
+    'Quyidagi bo\'limlardan birini tanlang:',
     Markup.inlineKeyboard([
       [Markup.button.callback('ℹ️ Bot haqida', 'about_bot')],
       [Markup.button.callback('💎 VIP obuna', 'donate_vip')],
@@ -206,149 +229,155 @@ bot.start((ctx) => {
       [Markup.button.callback('👨‍💻 Admin bilan bog\'lanish', 'contact_admin')],
       [Markup.button.callback('🚀 Savol berish', 'start_asking')]
     ])
-  );
+  ).catch(console.error);
 });
 
 bot.action('about_bot', async (ctx) => {
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery().catch(() => {});
   await ctx.reply(
-    'ℹ️ Bot nima uchun?\n\n' +
-    '📌 BSB, CHSB va istalgan fan bo\'yicha murakkab masalalar\n' +
-    '📌 Rasmli masalalarni ham yechamiz\n' +
-    '📌 O\'zbek tilida aniq va tez javob'
-  );
+    'ℹ️ **Bot haqida:**\n\n' +
+    '📌 BSB, CHSB va istalgan fan bo\'yicha vazifalarni tez va tushunarli qilib yechib beradi.\n' +
+    '📷 Masalaning rasmini yuborsangiz ham o\'qib, to\'liq yechim beradi.\n' +
+    '⚡ Eng so\'nggi AI modellari orqali ishlaydi.',
+    { parse_mode: 'Markdown' }
+  ).catch(console.error);
 });
 
 bot.action('donate_vip', async (ctx) => {
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery().catch(() => {});
   await ctx.reply(
-    `💎 VIP obuna imtiyozlari:\n\n` +
-    `⚡ Kutish vaqti: atigi ${COOLDOWN_VIP} soniya (oddiylarda ${COOLDOWN_FREE}s)\n` +
-    `🧠 Kuniga ${DAILY_LIMIT_VIP} marta kuchli Pro AI modeli\n` +
-    `👑 VIP nishon va ustuvor xizmat\n\n` +
-    `💳 VIP olish uchun: @XAVIK_ORG`
-  );
+    `💎 **VIP obuna imtiyozlari:**\n\n` +
+    `⚡ **Tezkor javob:** Kutish vaqti (cooldown) atigi **${COOLDOWN_VIP} soniya** (oddiylar uchun ${COOLDOWN_FREE}s).\n` +
+    `🧠 **Super AI:** Kuniga **${DAILY_LIMIT_VIP} marta** kuchli Pro modeldan foydalanish.\n` +
+    `👑 **Ustuvorlik:** Server band bo'lganda ham navbatsiz xizmat.\n\n` +
+    `💳 VIP obuna olish uchun adminga yozing: @XAVIK_ORG`,
+    { parse_mode: 'Markdown' }
+  ).catch(console.error);
 });
 
 bot.action('get_id', async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply(`🆔 Sizning Telegram ID:\n\n${ctx.from.id}\n\n(Nusxalash uchun ustiga bosing 📋)`);
+  await ctx.answerCbQuery().catch(() => {});
+  await ctx.reply(
+    `🆔 Sizning Telegram ID raqamingiz:\n\n\`${ctx.from.id}\`\n\n*(Nusxalash uchun raqam ustiga bosing)* 📋`,
+    { parse_mode: 'Markdown' }
+  ).catch(console.error);
 });
 
 bot.action('contact_admin', async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply('👨‍💻 Admin: @XAVIK_ORG');
+  await ctx.answerCbQuery().catch(() => {});
+  await ctx.reply('👨‍💻 **Admin bilan bog\'lanish:** 👉 @XAVIK_ORG', { parse_mode: 'Markdown' }).catch(console.error);
 });
 
 bot.action('start_asking', async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply('🚀 Bot tayyor!\n\nSavol yozing yoki masala rasmini yuboring 👇');
+  await ctx.answerCbQuery().catch(() => {});
+  await ctx.reply('🚀 **Bot ishga tayyor!**\n\nMarhamat, savolingizni yozing yoki masala rasmini yuboring 👇', { parse_mode: 'Markdown' }).catch(console.error);
 });
 
 bot.action('view_history', async (ctx) => {
-  await ctx.answerCbQuery();
+  await ctx.answerCbQuery().catch(() => {});
   try {
     const history = await getHistory(ctx.from.id, 5);
 
     if (!history.length) {
-      return ctx.reply('📭 Hali savol tarixi yo\'q. Birinchi savolingizni yuboring!');
+      return ctx.reply('📭 Sizda hali hech qanday savol tarixi yo\'q. Savolingizni yuboring!');
     }
 
-    let text = '📜 Oxirgi savollaringiz:\n\n';
+    let text = '📜 **Oxirgi 5 ta savolingiz:**\n\n';
     history.forEach((item, i) => {
       const date = new Date(item.created_at).toLocaleString('uz-UZ');
-      const shortQ = item.question.length > 80 ? item.question.substring(0, 80) + '...' : item.question;
-      const shortA = item.answer.length > 150 ? item.answer.substring(0, 150) + '...' : item.answer;
-      text += `${i + 1}. ${date}\n❓ ${shortQ}\n💡 ${shortA}\n\n`;
+      const shortQ = item.question.length > 70 ? item.question.substring(0, 70) + '...' : item.question;
+      const shortA = item.answer.length > 130 ? item.answer.substring(0, 130) + '...' : item.answer;
+      text += `**${i + 1}. ${date}**\n❓ ${shortQ}\n💡 ${shortA}\n\n`;
     });
 
     if (text.length > 4000) text = text.substring(0, 4000) + '\n\n...(qisqartirildi)';
-    await ctx.reply(text);
+    await ctx.reply(text, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error(error);
     await ctx.reply('❌ Tarixni olishda xatolik.');
   }
 });
 
-// 👑 ADMIN: VIP berish
-// Format: /tabrik 123456789 Ism
+// 👑 ADMIN: VIP Tabrik
+// Format: /tabrik 123456789 Ali
 bot.command('tabrik', async (ctx) => {
   if (ctx.from.id !== ADMIN_ID) return;
 
-  const parts = ctx.message.text.split(' ');
+  const parts = ctx.message.text.trim().split(/\s+/);
   if (parts.length < 2) {
-    return ctx.reply('⚠️ Format: /tabrik 123456789 Ism\n\nMasalan: /tabrik 123456789 Abdulloh');
+    return ctx.reply('⚠️ **Format:** `/tabrik <ID> <Ism>`\nMasalan: `/tabrik 123456789 Jasur`', { parse_mode: 'Markdown' });
   }
 
   const targetUserId = Number(parts[1]);
-  const targetName = parts[2] || 'Aziz foydalanuvchi';
+  const targetName = parts.slice(2).join(' ') || 'Foydalanuvchi';
 
   if (!VIP_USERS.includes(targetUserId)) {
     VIP_USERS.push(targetUserId);
   }
 
   const tabrikText =
-    `🎉 Tabriklaymiz, ${targetName}!\n\n` +
-    `💎 VIP obuna muvaffaqiyatli ulandi!\n\n` +
-    `✅ VIP imtiyozlaringiz:\n` +
-    `👑 Eng kuchli Pro AI modeli\n` +
-    `⚡ Atigi ${COOLDOWN_VIP} soniya kutish\n` +
-    `🧠 Kuniga ${DAILY_LIMIT_VIP} marta Pro AI\n\n` +
-    `🚀 Istalgan savol yoki masalangizni yuboring!`;
+    `🎉 **Tabriklaymiz, ${targetName}!**\n\n` +
+    `💎 Sizga **VIP obuna** muvaffaqiyatli faollashtirildi!\n\n` +
+    `✨ **Sizning afzalliklaringiz:**\n` +
+    `⚡ Kutish vaqti (cooldown): atigi **${COOLDOWN_VIP} soniya**\n` +
+    `🧠 Eng kuchli Pro AI modeli: kuniga **${DAILY_LIMIT_VIP} marta**\n` +
+    `🚀 Tezkor va navbatsiz javoblar\n\n` +
+    `Marhamat, savolingizni yoki masalangiz rasmini yuboring!`;
 
-  try {
-    // Botda (admin chatida) ko'rsatish
-    await ctx.reply(tabrikText);
-    // Foydalanuvchi lichkasiga ham yuborish
-    await ctx.telegram.sendMessage(targetUserId, tabrikText).catch(() => {});
-  } catch (error) {
-    await ctx.reply(`❌ Xatolik: ${error.message}`);
-  }
+  // 1. Botda (shu chatda) darhol ko'rsatish
+  await ctx.reply(tabrikText, { parse_mode: 'Markdown' });
+
+  // 2. Foydalanuvchiga lichkada ham yuborish (agar botni bloklamagan bo'lsa)
+  ctx.telegram.sendMessage(targetUserId, tabrikText, { parse_mode: 'Markdown' })
+    .then(() => ctx.reply(`✅ Xabar shuningdek ${targetUserId} ga lichkaga ham yetkazildi.`))
+    .catch((err) => ctx.reply(`ℹ️ Lichkaga yuborilmadi (foydalanuvchi botni start qilmagan yoki bloklagan). Lekin VIP qo'shildi!`));
 });
 
 // 📝 MATNLI SAVOLLAR
 bot.on(message('text'), async (ctx) => {
   const text = ctx.message.text;
-  if (text.startsWith('/')) return;
+  if (!text || text.startsWith('/')) return;
 
   const cooldown = checkCooldown(ctx.from.id);
   if (cooldown.limited) {
     return ctx.reply(
-      `⏳ Biroz kuting!\n\nYana ${cooldown.remaining} soniya...` +
-      (!cooldown.isVIP ? '\n\n💎 VIP da atigi 3 soniya kutiladi!' : '')
+      `⏳ **Iltimos, biroz kuting!**\n\nKeyingi savol uchun yana **${cooldown.remaining}** soniya kuting.` +
+      (!cooldown.isVIP ? `\n\n💎 *VIP foydalanuvchilar uchun kutish vaqti atigi ${COOLDOWN_VIP} sekund!*` : ''),
+      { parse_mode: 'Markdown' }
     );
   }
 
   const stopTyping = startTypingLoop(ctx);
 
   try {
-    const { models, isVIP, usedPro, usage, limit } = await resolveModel(ctx.from.id);
-    const prompt = buildPrompt(text);
+    const { wantPro, isVIP, usage, limit } = await resolveModelChoice(ctx.from.id);
+    const prompt = buildPrompt(text, false);
 
-    const { result, usedModel } = await generateWithRetry(models, prompt);
-    const answer = await result.response.text();
+    const { text: answer, usedModel } = await callGemini(prompt, wantPro);
 
     stopTyping();
 
-    if (usedPro) await incrementUsage(ctx.from.id);
+    if (wantPro && usedModel === MODEL_PRO) {
+      await incrementUsage(ctx.from.id);
+    }
 
-    const badge = usedPro
-      ? (isVIP ? `👑 VIP Pro [${usage + 1}/${limit}]` : `🧠 Pro [${usage + 1}/${limit}]`)
-      : `⚡ Tezkor [limit tugadi]`;
+    const badge = (wantPro && usedModel === MODEL_PRO)
+      ? (isVIP ? `👑 **VIP Yechim (Pro Model) [${usage + 1}/${limit}]:**` : `🧠 **Pro Model [${usage + 1}/${limit}]:**`)
+      : `⚡ **Tezkor Yechim:**`;
 
-    const replyText = `${badge}\n\n${answer}`;
+    const fullReply = `${badge}\n\n${answer}`;
 
-    if (replyText.length > 4000) {
-      await ctx.reply(replyText.substring(0, 4000) + '\n\n...javob qisqartirildi');
+    if (fullReply.length > 4000) {
+      await ctx.reply(fullReply.substring(0, 4000) + '\n\n...(qisqartirildi)');
     } else {
-      await ctx.reply(replyText);
+      await ctx.reply(fullReply);
     }
 
     saveHistory(ctx.from.id, text, answer).catch(() => {});
   } catch (error) {
     stopTyping();
-    console.error(error);
-    await ctx.reply(`❌ Xatolik: ${error.message}`);
+    console.error('Matn handler xatosi:', error);
+    await ctx.reply(`❌ Xatolik yuz berdi: ${error.message || 'Server javob bermadi'}\nIltimos, qaytadan yuborib ko'ring.`);
   }
 });
 
@@ -357,8 +386,9 @@ bot.on(message('photo'), async (ctx) => {
   const cooldown = checkCooldown(ctx.from.id);
   if (cooldown.limited) {
     return ctx.reply(
-      `⏳ Biroz kuting!\n\nYana ${cooldown.remaining} soniya...` +
-      (!cooldown.isVIP ? '\n\n💎 VIP da atigi 3 soniya kutiladi!' : '')
+      `⏳ **Iltimos, biroz kuting!**\n\nKeyingi savol uchun yana **${cooldown.remaining}** soniya kuting.` +
+      (!cooldown.isVIP ? `\n\n💎 *VIP foydalanuvchilar uchun kutish vaqti atigi ${COOLDOWN_VIP} sekund!*` : ''),
+      { parse_mode: 'Markdown' }
     );
   }
 
@@ -369,37 +399,39 @@ bot.on(message('photo'), async (ctx) => {
     const fileLink = await ctx.telegram.getFileLink(photo.file_id);
     const imagePart = await urlToGenerativePart(fileLink.href, 'image/jpeg');
 
-    const { models, isVIP, usedPro, usage, limit } = await resolveModel(ctx.from.id);
-    const userCaption = ctx.message.caption || 'Rasmdagi masalani yech';
+    const { wantPro, isVIP, usage, limit } = await resolveModelChoice(ctx.from.id);
+    const userCaption = ctx.message.caption || 'Rasmdagi masalani batafsil yechib ber.';
     const prompt = buildPrompt(userCaption, true);
 
-    const { result } = await generateWithRetry(models, [prompt, imagePart]);
-    const answer = await result.response.text();
+    const { text: answer, usedModel } = await callGemini([prompt, imagePart], wantPro);
 
     stopTyping();
 
-    if (usedPro) await incrementUsage(ctx.from.id);
+    if (wantPro && usedModel === MODEL_PRO) {
+      await incrementUsage(ctx.from.id);
+    }
 
-    const badge = usedPro
-      ? (isVIP ? `👑 VIP Pro [${usage + 1}/${limit}]` : `🧠 Pro [${usage + 1}/${limit}]`)
-      : `⚡ Tezkor [limit tugadi]`;
+    const badge = (wantPro && usedModel === MODEL_PRO)
+      ? (isVIP ? `👑 **VIP Yechim (Pro Model) [${usage + 1}/${limit}]:**` : `🧠 **Pro Model [${usage + 1}/${limit}]:**`)
+      : `⚡ **Tezkor Yechim:**`;
 
-    const replyText = `${badge}\n\n${answer}`;
+    const fullReply = `${badge}\n\n${answer}`;
 
-    if (replyText.length > 4000) {
-      await ctx.reply(replyText.substring(0, 4000) + '\n\n...javob qisqartirildi');
+    if (fullReply.length > 4000) {
+      await ctx.reply(fullReply.substring(0, 4000) + '\n\n...(qisqartirildi)');
     } else {
-      await ctx.reply(replyText);
+      await ctx.reply(fullReply);
     }
 
     saveHistory(ctx.from.id, `[Rasm] ${userCaption}`, answer).catch(() => {});
   } catch (error) {
     stopTyping();
-    console.error(error);
-    await ctx.reply(`❌ Rasmni o'qishda xatolik: ${error.message}`);
+    console.error('Rasm handler xatosi:', error);
+    await ctx.reply(`❌ Rasmni o'qishda xatolik yuz berdi: ${error.message || 'Server javob bermadi'}\nIltimos, qaytadan yuborib ko'ring.`);
   }
 });
 
+// Vercel Serverless Function Handler
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') {
@@ -413,7 +445,7 @@ module.exports = async (req, res) => {
     }
     res.status(200).json({ ok: true });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Serverless Handler xatosi:', e);
+    res.status(200).json({ ok: true, error: e.message }); // Telegram qayta-qayta retry qilmasligi uchun 200 qaytarish tavsiya etiladi
   }
 };
