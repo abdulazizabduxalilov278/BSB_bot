@@ -1,12 +1,26 @@
 const { Telegraf, Markup } = require('telegraf');
 const { message } = require('telegraf/filters');
-const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
-const { createClient } = require('@supabase/supabase-js');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+// Fallback tokenlar (agar Vercel env variable larda uzilish bo'lsa ham bot to'xtamasligi uchun)
+const BOT_TOKEN = process.env.BOT_TOKEN || '8847999795:AAFbQR81Q1_GpKPe9eRHG1wThJvkV3r5Vnc';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAb8RN6JQksnA82sMy4-ZRzCHkdf2urD4dNCPUc4Adz87vVkd8g';
+
+const bot = new Telegraf(BOT_TOKEN);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+// Supabase xavfsiz initsializatsiyasi (agar env bo'lmasa yoki xato bersa ham bot crash bo'lmaydi)
+let supabase = null;
+try {
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
+    const { createClient } = require('@supabase/supabase-js');
+    supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+  }
+} catch (sbErr) {
+  console.error('Supabase init xatosi:', sbErr.message);
+  supabase = null;
+}
 
 // 👑 VIP FOYDALANUVCHILAR RO'YXATI
 const VIP_USERS = [609227381];
@@ -22,19 +36,9 @@ const DAILY_LIMIT_VIP = 40;
 const COOLDOWN_FREE = 10; // Oddiy foydalanuvchilar: 10 sekund
 const COOLDOWN_VIP = 3;   // VIP foydalanuvchilar: 3 sekund
 
-// 🤖 RASMIY VA BARQAROR MODELLAR
-// gemini-1.5-pro: VIP va Pro limit uchun
-// gemini-1.5-flash: Eng tez, 503 bermaydigan, ishonchli asosiy model
+// 🤖 RASMIY BARQAROR MODELLAR
 const MODEL_PRO = 'gemini-1.5-pro';
 const MODEL_FLASH = 'gemini-1.5-flash';
-
-// Xavfsizlik filtrlari - bot noo'rin bloklanib qolmasligi uchun
-const SAFETY_SETTINGS = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-];
 
 // ⏱️ COOLDOWN TEKSHIRUVI
 const userLastMessageTime = new Map();
@@ -77,7 +81,9 @@ function todayString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 📈 Xavfsiz getTodayUsage
 async function getTodayUsage(userId) {
+  if (!supabase) return 0;
   try {
     const { data, error } = await supabase
       .from('usage_limits')
@@ -86,41 +92,40 @@ async function getTodayUsage(userId) {
       .eq('usage_date', todayString())
       .maybeSingle();
 
-    if (error) { console.error('getTodayUsage:', error.message); return 0; }
+    if (error) return 0;
     return data ? data.pro_count : 0;
   } catch (e) {
-    console.error('getTodayUsage catch:', e);
     return 0;
   }
 }
 
+// ➕ Xavfsiz incrementUsage
 async function incrementUsage(userId) {
+  if (!supabase) return;
   try {
     const current = await getTodayUsage(userId);
-    const { error } = await supabase
+    await supabase
       .from('usage_limits')
       .upsert(
         { user_id: userId, usage_date: todayString(), pro_count: current + 1 },
         { onConflict: 'user_id,usage_date' }
       );
-    if (error) console.error('incrementUsage:', error.message);
-  } catch (e) {
-    console.error('incrementUsage catch:', e);
-  }
+  } catch (e) {}
 }
 
+// 💾 Xavfsiz saveHistory
 async function saveHistory(userId, question, answer) {
+  if (!supabase) return;
   try {
-    const { error } = await supabase
+    await supabase
       .from('chat_history')
       .insert({ user_id: userId, question, answer: answer.substring(0, 2000) });
-    if (error) console.error('saveHistory:', error.message);
-  } catch (e) {
-    console.error('saveHistory catch:', e);
-  }
+  } catch (e) {}
 }
 
+// 📜 Xavfsiz getHistory
 async function getHistory(userId, limit = 5) {
+  if (!supabase) return [];
   try {
     const { data, error } = await supabase
       .from('chat_history')
@@ -128,10 +133,9 @@ async function getHistory(userId, limit = 5) {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (error) { console.error('getHistory:', error.message); return []; }
+    if (error) return [];
     return data || [];
   } catch (e) {
-    console.error('getHistory catch:', e);
     return [];
   }
 }
@@ -149,39 +153,27 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// 🔄 TEZKOR VA ISHONCHLI AI GENERATSIYASI
-// Agar Pro model band bo'lsa (503/429), zudlik bilan Flash modelga o'tadi
+// 🔄 AI GENERATSIYASI (Pro band bo'lsa darhol Flash ga o'tadi)
 async function callGemini(contents, wantPro = false) {
   const modelsToTry = wantPro ? [MODEL_PRO, MODEL_FLASH] : [MODEL_FLASH];
   let lastError;
 
   for (const modelName of modelsToTry) {
     try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        safetySettings: SAFETY_SETTINGS,
-      });
-
+      const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent(contents);
       
       let answerText = '';
       try {
         answerText = result.response.text();
       } catch (respErr) {
-        // Agar javob safety yoki boshqa sabab bilan bloklangan bo'lsa
-        const candidate = result?.response?.candidates?.[0];
-        if (candidate?.finishReason) {
-          answerText = '⚠️ Ushbu savolga xavfsizlik qoidalari tufayli to\'liq javob berib bo\'lmadi. Iltimos, darslik yoki fan bo\'yicha boshqa savol yuboring.';
-        } else {
-          throw respErr;
-        }
+        answerText = '⚠️ Ushbu savolga xavfsizlik qoidalari tufayli to\'liq javob berib bo\'lmadi. Iltimos, darslik yoki fan bo\'yicha boshqa savol yuboring.';
       }
 
       return { text: answerText, usedModel: modelName };
     } catch (err) {
       lastError = err;
       console.error(`Model ${modelName} error:`, err.message);
-      // Agar yana boshqa model bo'lsa, davom etamiz
       continue;
     }
   }
@@ -189,7 +181,6 @@ async function callGemini(contents, wantPro = false) {
   throw lastError;
 }
 
-// 🧠 Foydalanuvchi modelini aniqlash
 async function resolveModelChoice(userId) {
   const isVIP = VIP_USERS.includes(userId);
   const limit = isVIP ? DAILY_LIMIT_VIP : DAILY_LIMIT_FREE;
@@ -199,13 +190,12 @@ async function resolveModelChoice(userId) {
   return { wantPro: canUsePro, isVIP, usage, limit };
 }
 
-// 📝 Qisqa va chiroyli javob uchun qolip
 function buildPrompt(userText, isImage = false) {
   return (
     `Sen har qanday fan bo'yicha tajribali o'qituvchisan.\n` +
     `QOIDALAR:\n` +
     `1. O'zbek tilida yoz.\n` +
-    `2. Qisqa, aniq va tushunarli bo'lsin (ortiqcha gaplarsiz, maksimal 200-300 so'z).\n` +
+    `2. Qisqa, aniq va tushunarli bo'lsin (maksimal 200-300 so'z).\n` +
     `3. Chiroyli o'qilishi uchun tegishli joylariga stiker/emojilar qo'sh (masalan: 💡, 📝, 📌, ✅, 🔢).\n` +
     `4. Muhim formulalar va xulosani alohida ajratib ko'rsat.\n\n` +
     (isImage ? `Rasmdagi masalani yech. Foydalanuvchi izohi: ${userText}` : `Savol: ${userText}`)
@@ -324,13 +314,11 @@ bot.command('tabrik', async (ctx) => {
     `🚀 Tezkor va navbatsiz javoblar\n\n` +
     `Marhamat, savolingizni yoki masalangiz rasmini yuboring!`;
 
-  // 1. Botda (shu chatda) darhol ko'rsatish
   await ctx.reply(tabrikText, { parse_mode: 'Markdown' });
 
-  // 2. Foydalanuvchiga lichkada ham yuborish (agar botni bloklamagan bo'lsa)
   ctx.telegram.sendMessage(targetUserId, tabrikText, { parse_mode: 'Markdown' })
     .then(() => ctx.reply(`✅ Xabar shuningdek ${targetUserId} ga lichkaga ham yetkazildi.`))
-    .catch((err) => ctx.reply(`ℹ️ Lichkaga yuborilmadi (foydalanuvchi botni start qilmagan yoki bloklagan). Lekin VIP qo'shildi!`));
+    .catch(() => ctx.reply(`ℹ️ Lichkaga yuborilmadi (foydalanuvchi botni start qilmagan yoki bloklagan). Lekin VIP qo'shildi!`));
 });
 
 // 📝 MATNLI SAVOLLAR
@@ -446,6 +434,6 @@ module.exports = async (req, res) => {
     res.status(200).json({ ok: true });
   } catch (e) {
     console.error('Serverless Handler xatosi:', e);
-    res.status(200).json({ ok: true, error: e.message }); // Telegram qayta-qayta retry qilmasligi uchun 200 qaytarish tavsiya etiladi
+    res.status(200).json({ ok: true, error: e.message });
   }
 };
