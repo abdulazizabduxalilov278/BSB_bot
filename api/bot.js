@@ -167,8 +167,34 @@ async function urlToGenerativePart(url, mimeType) {
 }
 
 // 🔄 AI GENERATSIYASI (404/503 bo'lsa darhol keyingi modelga o'tadi)
-async function callGemini(contents, wantPro = false) {
-  const modelsToTry = wantPro ? PRO_MODELS : FLASH_MODELS;
+async function getAvailableFlashModels() {
+  const response = await axios.get(
+    'https://generativelanguage.googleapis.com/v1beta/models',
+    { params: { key: GEMINI_API_KEY } }
+  );
+  const models = response.data && Array.isArray(response.data.models)
+    ? response.data.models
+    : [];
+  const availableModels = models
+    .filter((model) =>
+      model &&
+      typeof model.name === 'string' &&
+      model.name.toLowerCase().includes('flash') &&
+      Array.isArray(model.supportedGenerationMethods) &&
+      model.supportedGenerationMethods.includes('generateContent')
+    )
+    .map((model) => model.name.replace(/^models\//, ''));
+
+  if (!availableModels.length) {
+    throw new Error('Gemini API returned no Flash models supporting generateContent.');
+  }
+
+  return availableModels;
+}
+
+async function callGemini(contents, wantPro = false, flashModels = FLASH_MODELS) {
+  const proModels = PRO_MODELS.filter((modelName) => !FLASH_MODELS.includes(modelName));
+  const modelsToTry = wantPro ? [...proModels, ...flashModels] : flashModels;
   let lastError;
 
   for (const modelName of modelsToTry) {
@@ -360,8 +386,12 @@ bot.on(message('text'), async (ctx) => {
   try {
     const { wantPro, isVIP, usage, limit } = await resolveModelChoice(ctx.from.id);
     const prompt = buildPrompt(text, false);
+    const availableFlashModels = await getAvailableFlashModels();
 
-    const { text: answer, usedModel } = await callGemini(prompt, wantPro);
+    const { text: answer, usedModel } = await callGemini(prompt, wantPro, [
+      ...availableFlashModels,
+      ...FLASH_MODELS.filter((modelName) => !availableFlashModels.includes(modelName))
+    ]);
 
     stopTyping();
 
