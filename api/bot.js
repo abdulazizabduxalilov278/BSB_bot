@@ -36,18 +36,123 @@ const DAILY_LIMIT_VIP = 40;
 const COOLDOWN_FREE = 10; // Oddiy foydalanuvchilar: 10 sekund
 const COOLDOWN_VIP = 3;   // VIP foydalanuvchilar: 3 sekund
 
-// 🤖 RASMIY VA ANIQ ISHLAYDIGAN MODELLAR RO'YXATI
-// Google ba'zi hisoblarda 'gemini-1.5-flash' o'rniga '002' yoki 'latest' talab qiladi (404 oldini olish uchun)
-const PRO_MODELS = [
-  'gemini-1.5-pro-latest',
-  'gemini-1.5-pro-002'
-];
+// 🤖 AVTO-YANGILANIB TURADIGAN MODELLAR TIZIMI
+// Banned (eskirgan / 404 bergan) modellar
+const bannedModels = new Set();
 
-const FLASH_MODELS = [
+// 2026-yilgi eng so'nggi va tavsiya etilgan modellar (zaxira va boshlang'ich kesh)
+let cachedFlashModels = [
+  'gemini-3.8-flash',
+  'gemini-3.0-flash',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
   'gemini-1.5-flash-latest',
   'gemini-1.5-flash-002',
-  'gemini-2.0-flash'
+  'gemini-1.5-flash'
 ];
+
+let cachedProModels = [
+  'gemini-3.8-pro',
+  'gemini-3.0-pro',
+  'gemini-2.5-pro',
+  'gemini-2.0-pro',
+  'gemini-1.5-pro-latest',
+  'gemini-1.5-pro-002',
+  'gemini-1.5-pro'
+];
+
+let lastModelsFetchTime = 0;
+const MODELS_CACHE_TTL = 1000 * 60 * 60 * 2; // 2 soat kesh
+let isFetchingModels = false;
+
+function extractModelVersion(name) {
+  const m = name.match(/gemini-(\d+(?:\.\d+)?)/i);
+  return m ? parseFloat(m[1]) : 0;
+}
+
+function sortModelsDescending(models) {
+  return [...new Set(models)].sort((a, b) => {
+    const vDiff = extractModelVersion(b) - extractModelVersion(a);
+    if (vDiff !== 0) return vDiff;
+    return a.localeCompare(b);
+  });
+}
+
+// Google API orqali mavjud barcha modellarni avtomatik aniqlash
+async function updateModelsFromGoogleAPI(force = false) {
+  const now = Date.now();
+  if (!force && (now - lastModelsFetchTime < MODELS_CACHE_TTL)) {
+    return;
+  }
+  if (isFetchingModels) return;
+  isFetchingModels = true;
+
+  try {
+    const response = await axios.get(
+      'https://generativelanguage.googleapis.com/v1beta/models',
+      {
+        params: { key: GEMINI_API_KEY },
+        timeout: 5000
+      }
+    );
+
+    const rawModels = response.data && Array.isArray(response.data.models)
+      ? response.data.models
+      : [];
+
+    const available = rawModels
+      .filter((m) =>
+        m &&
+        typeof m.name === 'string' &&
+        Array.isArray(m.supportedGenerationMethods) &&
+        m.supportedGenerationMethods.includes('generateContent')
+      )
+      .map((m) => m.name.replace(/^models\//, ''))
+      .filter((name) => !bannedModels.has(name));
+
+    const flash = available.filter((name) => name.toLowerCase().includes('flash'));
+    const pro = available.filter((name) => name.toLowerCase().includes('pro'));
+
+    if (flash.length > 0) {
+      cachedFlashModels = sortModelsDescending([...flash, ...cachedFlashModels.filter((m) => !bannedModels.has(m))]);
+    }
+    if (pro.length > 0) {
+      cachedProModels = sortModelsDescending([...pro, ...cachedProModels.filter((m) => !bannedModels.has(m))]);
+    }
+
+    lastModelsFetchTime = now;
+    console.log('✅ Gemini modellar ro\'yxati Google API orqali yangilandi:', {
+      topFlash: cachedFlashModels[0],
+      topPro: cachedProModels[0]
+    });
+  } catch (err) {
+    console.warn('⚠️ Gemini modellarini Google API dan olishda ogohlantirish (keshdagi modellar ishlatiladi):', err.message);
+  } finally {
+    isFetchingModels = false;
+  }
+}
+
+async function getModelsToTry(wantPro = false) {
+  const now = Date.now();
+  if (now - lastModelsFetchTime > MODELS_CACHE_TTL) {
+    if (cachedFlashModels.length === 0) {
+      await updateModelsFromGoogleAPI();
+    } else {
+      updateModelsFromGoogleAPI().catch(() => {});
+    }
+  }
+
+  const activeFlash = cachedFlashModels.filter((m) => !bannedModels.has(m));
+  const activePro = cachedProModels.filter((m) => !bannedModels.has(m));
+
+  const flashList = activeFlash.length > 0 ? activeFlash : ['gemini-3.8-flash', 'gemini-2.5-flash'];
+  const proList = activePro.length > 0 ? activePro : ['gemini-3.8-pro', 'gemini-2.5-pro'];
+
+  if (wantPro) {
+    return [...new Set([...proList, ...flashList])];
+  }
+  return flashList;
+}
 
 // ⏱️ COOLDOWN TEKSHIRUVI
 const userLastMessageTime = new Map();
@@ -162,17 +267,20 @@ async function urlToGenerativePart(url, mimeType) {
   };
 }
 
-// 🔄 AI GENERATSIYASI (404/503 bo'lsa darhol keyingi modelga o'tadi)
-async function callGemini(contents, wantPro = false, flashModels = FLASH_MODELS) {
-  const proModels = PRO_MODELS.filter((modelName) => !FLASH_MODELS.includes(modelName));
-  const modelsToTry = wantPro ? [...proModels, ...flashModels] : flashModels;
+// 🔄 AVTO-TIKLANUVCHI VA DOIM YANGI AI GENERATSIYASI (404/503 bo'lsa darhol yangi modelga o'tadi)
+async function callGemini(contents, wantPro = false) {
+  let modelsToTry = await getModelsToTry(wantPro);
   let lastError;
+  let retriedAfterRefresh = false;
 
-  for (const modelName of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const modelName = modelsToTry[i];
+    if (bannedModels.has(modelName)) continue;
+
     try {
       const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent(contents);
-      
+
       let answerText = '';
       try {
         answerText = result.response.text();
@@ -180,11 +288,50 @@ async function callGemini(contents, wantPro = false, flashModels = FLASH_MODELS)
         answerText = '⚠️ Ushbu savolga xavfsizlik qoidalari tufayli to\'liq javob berib bo\'lmadi. Iltimos, darslik yoki fan bo\'yicha boshqa savol yuboring.';
       }
 
+      // Muvaffaqiyatli modelni kesh boshiga surish (keyingi safar 0ms kechikish bilan shu model ishlatiladi)
+      if (modelName.toLowerCase().includes('pro')) {
+        cachedProModels = [modelName, ...cachedProModels.filter((m) => m !== modelName)];
+      } else {
+        cachedFlashModels = [modelName, ...cachedFlashModels.filter((m) => m !== modelName)];
+      }
+
       return { text: answerText, usedModel: modelName };
     } catch (err) {
       lastError = err;
-      console.error(`Model ${modelName} error:`, err.message);
-      continue;
+      const errMsg = err?.message || '';
+      console.error(`Model [${modelName}] xatosi:`, errMsg);
+
+      // Agar model eskirgan yoki topilmagan bo'lsa (404 Not Found)
+      const is404 = errMsg.includes('404') || errMsg.includes('not found') || errMsg.includes('no longer available');
+      if (is404) {
+        bannedModels.add(modelName);
+        console.warn(`⚠️ Model [${modelName}] ro'yxatdan o'chirildi (banned).`);
+
+        // Google o'z xatolik xabarida yangi modelni tavsiya qilgan bo'lsa
+        // Masalan: "Please update your code to use models/gemini-3.8-flash"
+        const suggestedMatch = errMsg.match(/use (?:models\/)?(gemini-[a-zA-Z0-9_.-]+)/i);
+        if (suggestedMatch && suggestedMatch[1]) {
+          const suggestedModel = suggestedMatch[1];
+          if (!bannedModels.has(suggestedModel) && !modelsToTry.includes(suggestedModel)) {
+            console.log(`💡 Google tomonidan tavsiya qilingan yangi model qo'shildi: ${suggestedModel}`);
+            modelsToTry.splice(i + 1, 0, suggestedModel);
+            if (suggestedModel.toLowerCase().includes('pro')) {
+              cachedProModels.unshift(suggestedModel);
+            } else {
+              cachedFlashModels.unshift(suggestedModel);
+            }
+          }
+        }
+      }
+
+      // Agar barcha modellar 404 bersa va hali API dan majburiy yangilanmagan bo'lsa
+      if (i === modelsToTry.length - 1 && !retriedAfterRefresh && is404) {
+        console.log('🔄 Barcha mavjud modellar 404 berdi. Google API dan yangi modellar olinmoqda...');
+        retriedAfterRefresh = true;
+        await updateModelsFromGoogleAPI(true);
+        modelsToTry = await getModelsToTry(wantPro);
+        i = -1; // Qaytadan yangi modellar bilan boshlash
+      }
     }
   }
 
@@ -338,6 +485,35 @@ bot.command('tabrik', async (ctx) => {
     .catch(() => ctx.reply(`ℹ️ Lichkaga yuborilmadi (foydalanuvchi botni start qilmagan yoki bloklagan). Lekin VIP qo'shildi!`));
 });
 
+// 👑 ADMIN: Modellarni ko'rish va yangilash
+bot.command('models', async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+  const activeFlash = cachedFlashModels.filter((m) => !bannedModels.has(m));
+  const activePro = cachedProModels.filter((m) => !bannedModels.has(m));
+  const banned = Array.from(bannedModels);
+
+  const statusText =
+    `🤖 **Gemini Modellari Holati:**\n\n` +
+    `⚡ **Faol Flash modellar:**\n${activeFlash.map((m) => `✅ \`${m}\``).join('\n') || 'Hech biri faol emas'}\n\n` +
+    `🧠 **Faol Pro modellar:**\n${activePro.map((m) => `✅ \`${m}\``).join('\n') || 'Hech biri faol emas'}\n\n` +
+    (banned.length > 0 ? `🚫 **Eskirgan (Banned 404):**\n${banned.map((m) => `❌ ~~${m}~~`).join('\n')}\n\n` : '') +
+    `⏱️ **Oxirgi yangilanish:** ${lastModelsFetchTime ? new Date(lastModelsFetchTime).toLocaleTimeString('uz-UZ') : 'Boshlang\'ich kesh'}\n\n` +
+    `🔄 Google API dan darhol yangilash uchun: /refresh_models`;
+
+  await ctx.reply(statusText, { parse_mode: 'Markdown' });
+});
+
+bot.command('refresh_models', async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+  await ctx.reply('🔄 Google API orqali eng so\'nggi modellar ro\'yxati olinmoqda...');
+  try {
+    await updateModelsFromGoogleAPI(true);
+    await ctx.reply('✅ Modellar ro\'yxati muvaffaqiyatli yangilandi!\nKo\'rish uchun: /models');
+  } catch (e) {
+    await ctx.reply(`❌ Yangilashda xatolik: ${e.message}`);
+  }
+});
+
 // 📝 MATNLI SAVOLLAR
 bot.on(message('text'), async (ctx) => {
   const text = ctx.message.text;
@@ -357,7 +533,7 @@ bot.on(message('text'), async (ctx) => {
   try {
     const { wantPro, isVIP, usage, limit } = await resolveModelChoice(ctx.from.id);
     const prompt = buildPrompt(text, false);
-    const { text: answer, usedModel } = await callGemini(prompt, wantPro, FLASH_MODELS);
+    const { text: answer, usedModel } = await callGemini(prompt, wantPro);
 
     stopTyping();
 
@@ -408,7 +584,7 @@ bot.on(message('photo'), async (ctx) => {
     const userCaption = ctx.message.caption || 'Rasmdagi masalani batafsil yechib ber.';
     const prompt = buildPrompt(userCaption, true);
 
-    const { text: answer, usedModel } = await callGemini([prompt, imagePart], wantPro, FLASH_MODELS);
+    const { text: answer, usedModel } = await callGemini([prompt, imagePart], wantPro);
 
     stopTyping();
 
