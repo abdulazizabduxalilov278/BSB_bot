@@ -39,18 +39,14 @@ const COOLDOWN_VIP = 3;   // VIP foydalanuvchilar: 3 sekund
 // 🤖 RASMIY VA ANIQ ISHLAYDIGAN MODELLAR RO'YXATI
 // Google ba'zi hisoblarda 'gemini-1.5-flash' o'rniga '002' yoki 'latest' talab qiladi (404 oldini olish uchun)
 const PRO_MODELS = [
-  'gemini-1.5-pro-002',
   'gemini-1.5-pro-latest',
-  'gemini-1.5-pro',
-  'gemini-1.5-flash-002',
-  'gemini-1.5-flash',
+  'gemini-1.5-pro-002'
 ];
 
 const FLASH_MODELS = [
   'gemini-1.5-flash-latest',
   'gemini-1.5-flash-002',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  'gemini-2.0-flash'
 ];
 
 // ⏱️ COOLDOWN TEKSHIRUVI
@@ -253,7 +249,7 @@ bot.action(['donate_vip', 'vip_info'], async (ctx) => {
     `💎 **VIP obuna va uning imtiyozlari:**\n\n` +
     `💰 **Obuna narxi:** 1 oyga **10 000 so'm**\n\n` +
     `✨ **Sizga beriladigan imtiyozlar:**\n` +
-    `⚡ **Tezkor javob:** Kutish vaqti (cooldown) atigi **${COOLDOWN_VIP} soniya** (oddiy foydalanuvchilarda ${COOLDOWN_FREE}s).\n` +
+    `⏳ **To'xtovsiz savollar:** Savollar orasidagi kutish vaqti atigi **${COOLDOWN_VIP} soniya** (oddiy foydalanuvchilarda ${COOLDOWN_FREE}s).\n` +
     `🧠 **Super AI (Pro Model):** Kuniga **${DAILY_LIMIT_VIP} marta** eng kuchli Pro AI modelidan foydalanish.\n` +
     `👑 **Ustuvorlik:** Server band bo'lganda ham navbatsiz xizmat.\n\n` +
     `💳 **VIP xarid qilish uchun adminga yozing:** 👇`,
@@ -330,9 +326,9 @@ bot.command('tabrik', async (ctx) => {
     `🎉 **Tabriklaymiz, ${targetName}!**\n\n` +
     `💎 Sizga **VIP obuna** muvaffaqiyatli faollashtirildi!\n\n` +
     `✨ **Sizning afzalliklaringiz:**\n` +
-    `⚡ Kutish vaqti (cooldown): atigi **${COOLDOWN_VIP} soniya**\n` +
+    `⏳ Savollar orasidagi kutish vaqti: atigi **${COOLDOWN_VIP} soniya**\n` +
     `🧠 Eng kuchli Pro AI modeli: kuniga **${DAILY_LIMIT_VIP} marta**\n` +
-    `🚀 Tezkor va navbatsiz javoblar\n\n` +
+    `🚀 Ustuvor va navbatsiz xizmat ko'rsatish\n\n` +
     `Marhamat, savolingizni yoki masalangiz rasmini yuboring!`;
 
   await ctx.reply(tabrikText, { parse_mode: 'Markdown' });
